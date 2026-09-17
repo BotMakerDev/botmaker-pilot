@@ -67,8 +67,12 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      # `packages` is set because the action's default is `tools platform-tools`, and Google removed the
+      # legacy `tools` package from the SDK repository (botmaker-remote v0.0.1 failed on it, 2026-09-17).
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Build web + sync + assemble APK
         run: |
