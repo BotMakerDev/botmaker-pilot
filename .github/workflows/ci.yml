@@ -29,9 +29,9 @@ jobs:
   web:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: npm
@@ -52,17 +52,17 @@ jobs:
     steps:
       # fetch-depth 0 because JReleaser builds this release's notes from the commits since the previous
       # tag, and a shallow clone has neither the previous tag nor the commits.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "24"
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
@@ -70,7 +70,7 @@ jobs:
       # `packages` is set because the action's default is `tools platform-tools`, and Google removed the
       # legacy `tools` package from the SDK repository (botmaker-remote v0.0.1 failed on it, 2026-09-17).
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
         with:
           packages: platform-tools
 
