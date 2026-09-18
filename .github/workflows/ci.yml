@@ -10,7 +10,7 @@ name: CI
 #          changes far less often than web/ — which is why it stays off the push path.
 #
 # Studio's Remote Pilot dialog shows a QR code pointing at the stable permalink
-# https://github.com/LiQiyeDev/botmaker-pilot/releases/latest/download/botpilot.apk, which always resolves
+# https://github.com/BotMakerDev/botmaker-pilot/releases/latest/download/botpilot.apk, which always resolves
 # to the newest release's asset — so the phone can scan-and-install the latest build fast.
 #
 # Cut a release:  git tag v0.1.0 && git push origin v0.1.0

@@ -13,7 +13,7 @@
 # THE VERSION ARRIVES AS JRELEASER_PROJECT_VERSION, set by the workflow from the tag.
 #
 # THE ASSET NAME IS PART OF THE CONTRACT. Studio's Remote Pilot dialog shows a QR code pointing at
-# https://github.com/LiQiyeDev/botmaker-pilot/releases/latest/download/botpilot.apk — a permalink that
+# https://github.com/BotMakerDev/botmaker-pilot/releases/latest/download/botpilot.apk — a permalink that
 # resolves through the *newest* release to an asset named exactly `botpilot.apk`. Rename the file and every
 # phone that scans that code gets a 404.
 
@@ -30,11 +30,11 @@ project:
   copyright: LiQiyeDev
   inceptionYear: '2026'
   links:
-    homepage: https://github.com/LiQiyeDev/botmaker-pilot
+    homepage: https://github.com/BotMakerDev/botmaker-pilot
 
 release:
   github:
-    owner: LiQiyeDev
+    owner: BotMakerDev
     name: botmaker-pilot
     tagName: 'v{{projectVersion}}'
     releaseName: 'v{{projectVersion}}'
