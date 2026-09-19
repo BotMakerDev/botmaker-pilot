@@ -143,7 +143,7 @@ git tag v0.1.0 && git push origin v0.1.0
 ```
 
 Studio's Remote Pilot dialog shows an "install app" QR pointing at the stable permalink
-`https://github.com/LiQiyeDev/botmaker-pilot/releases/latest/download/botpilot.apk`, which always resolves to
+`https://github.com/BotMakerDev/botmaker-pilot/releases/latest/download/botpilot.apk`, which always resolves to
 the newest release — scan it on the phone to download and install the latest build.
 
 ## Protocol (WebSocket `/ws?token=…`)

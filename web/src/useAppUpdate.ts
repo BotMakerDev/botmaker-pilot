@@ -4,10 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 declare const __APP_VERSION__: string;
 export const APP_VERSION = __APP_VERSION__;
 
-const RELEASES_API = "https://api.github.com/repos/LiQiyeDev/botmaker-pilot/releases/latest";
+const RELEASES_API = "https://api.github.com/repos/BotMakerDev/botmaker-pilot/releases/latest";
 /** Stable permalink to the latest APK — the same URL Studio's install QR points at. */
 export const LATEST_APK_URL =
-  "https://github.com/LiQiyeDev/botmaker-pilot/releases/latest/download/botpilot.apk";
+  "https://github.com/BotMakerDev/botmaker-pilot/releases/latest/download/botpilot.apk";
 
 const CHECK_KEY = "botpilot.updateCheckedAt";
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // auto-check throttle: at most once every 6h
