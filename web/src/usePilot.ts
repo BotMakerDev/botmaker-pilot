@@ -5,6 +5,9 @@ import type {
 
 const OVERLAY_TTL_MS = 1200;
 
+/** How long a host notice stays on screen. */
+export const NOTICE_MS = 4000;
+
 /** How many trace lines the log drawer keeps; Studio replays its last 200 on connect. */
 export const TRACE_KEEP = 500;
 
@@ -53,6 +56,11 @@ export function usePilot(endpoint: Endpoint | null) {
   // The run's trace, for the log drawer. State rather than a ref: a line is read by a person, not drawn at
   // 24 FPS, and the drawer has to re-render when one arrives.
   const [trace, setTrace] = useState<TraceLine[]>([]);
+  // The input kinds the host announced on connect. Empty until it does — and forever from an SDK that
+  // predates the keyboard, which is how the keyboard button knows to stay hidden.
+  const [inputKinds, setInputKinds] = useState<string[]>([]);
+  // The host's last one-sentence notice (why a key was not sent), cleared after NOTICE_MS.
+  const [notice, setNotice] = useState<string | null>(null);
   const runRef = useRef<RunState>("stopped");
 
   const frameRef = useRef<Frame | null>(null);
@@ -164,6 +172,8 @@ export function usePilot(endpoint: Endpoint | null) {
         line?: TraceLine;
         codec?: string | null;
         sx?: number; sy?: number; sw?: number; sh?: number;
+        kinds?: string[];
+        text?: string;
       };
       try {
         msg = JSON.parse(text);
@@ -188,6 +198,12 @@ export function usePilot(endpoint: Endpoint | null) {
         e._exp = Date.now() + OVERLAY_TTL_MS;
         const next = [...overlaysRef.current, e];
         overlaysRef.current = next.length > 40 ? next.slice(next.length - 40) : next;
+      }
+      else if (msg.type === "input" && Array.isArray(msg.kinds)) {
+        setInputKinds(msg.kinds.filter((k) => typeof k === "string"));
+      }
+      else if (msg.type === "notice" && typeof msg.text === "string") {
+        setNotice(msg.text);
       }
       else if (msg.type === "trace" && msg.line) {
         const line = msg.line;
@@ -239,11 +255,20 @@ export function usePilot(endpoint: Endpoint | null) {
       frameRef.current = null;
       overlaysRef.current = [];
       setTrace([]);
+      setInputKinds([]);
       runRef.current = "stopped";
     };
   }, [endpoint]);
 
+  useEffect(() => {
+    if (notice === null) return;
+    const timer = window.setTimeout(() => setNotice(null), NOTICE_MS);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
   const clearTrace = useCallback(() => setTrace([]), []);
 
-  return { status, runState, backgroundInput, frameRef, overlaysRef, trace, clearTrace, send };
+  return {
+    status, runState, backgroundInput, frameRef, overlaysRef, trace, clearTrace, send, inputKinds, notice,
+  };
 }

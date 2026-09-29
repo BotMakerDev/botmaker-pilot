@@ -13,13 +13,21 @@ import { ConnectScreen } from "./ConnectScreen";
 import { LogDrawer } from "./LogDrawer";
 import { reachSteps } from "./reach";
 import { useInteract } from "./useInteract";
+import { useStageGestures } from "./useStageGestures";
+import { KeyboardBar } from "./KeyboardBar";
+import { NO_ZOOM, type Zoom } from "./zoom";
 import { useAppUpdate, LATEST_APK_URL } from "./useAppUpdate";
 
 export function App() {
   const [endpoint, setEndpoint] = useState<Endpoint | null>(initialEndpoint);
   const [updateDismissed, setUpdateDismissed] = useState(false);
   const { available: updateAvailable, latest } = useAppUpdate();
-  const { status, runState, backgroundInput, frameRef, overlaysRef, trace, clearTrace, send } = usePilot(endpoint);
+  const {
+    status, runState, backgroundInput, frameRef, overlaysRef, trace, clearTrace, send, inputKinds, notice,
+  } = usePilot(endpoint);
+  const [keyboard, setKeyboard] = useState(false);
+  // Only a host that announced it takes keys gets a keyboard button; an older SDK never says so.
+  const takesKeys = inputKinds.includes("key");
   const [logOpen, setLogOpen] = useState(false);
 
   // Interact: tapping the stage reveals the toggle; the toggle arms it. Both start off, and both reset when
@@ -30,7 +38,14 @@ export function App() {
   // dangerous to have silently survive a reconnect.
   const [overlays, setOverlays] = useState(loadOverlaysEnabled);
   const transformRef = useRef<ViewTransform | null>(null);
-  const gestures = useInteract(send, transformRef, interact);
+  const zoomRef = useRef<Zoom>(NO_ZOOM);
+  const interactGestures = useInteract(send, transformRef, interact);
+  const gestures = useStageGestures(zoomRef, interactGestures, interact);
+
+  // Keys reach the game only through Interact, like taps: disarming closes the keyboard.
+  useEffect(() => {
+    if (!interact) setKeyboard(false);
+  }, [interact]);
 
   // The server arms per connection, so mirror every local change onto the wire (and re-arm on reconnect).
   useEffect(() => {
@@ -94,6 +109,7 @@ export function App() {
           frameRef={frameRef}
           overlaysRef={overlaysRef}
           transformRef={transformRef}
+          zoomRef={zoomRef}
           interactive={interact}
           overlays={overlays}
           {...gestures}
@@ -117,11 +133,21 @@ export function App() {
             >
               {overlays ? "◎ Overlays" : "◎ Overlays off"}
             </button>
+            {interact && takesKeys && (
+              <button className={`keys${keyboard ? " on" : ""}`} onClick={() => setKeyboard((v) => !v)}>
+                ⌨ Keys
+              </button>
+            )}
+            <button className="zoom-reset" onClick={() => (zoomRef.current = NO_ZOOM)}>
+              ⤢ Fit
+            </button>
             {interact && !backgroundInput && (
               <span className="interact-warn">moves the computer’s real cursor</span>
             )}
           </div>
         )}
+        {keyboard && interact && <KeyboardBar send={send} onClose={() => setKeyboard(false)} />}
+        {notice && <div className="notice">{notice}</div>}
         {status !== "connected" && (
           <div className="reconnect-overlay">
             <p>{status === "connecting" ? "Connecting…" : "Can’t reach this connection — retrying…"}</p>

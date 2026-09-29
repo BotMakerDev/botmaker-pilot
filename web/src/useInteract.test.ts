@@ -258,6 +258,30 @@ describe("the wheel", () => {
   });
 });
 
+describe("a second finger (a pinch) cancels the gesture", () => {
+  test("a pending tap is dropped: nothing is sent", () => {
+    const h = harness();
+    h.handlers.onPointerDown(pointer(h, 110, 105));
+    h.handlers.cancel();
+    h.handlers.onPointerUp(pointer(h, 110, 105));
+    expect(h.sent).toEqual([]);
+  });
+
+  test("a drag is released where it last moved, never left held", () => {
+    vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const h = harness();
+    h.handlers.onPointerDown(pointer(h, 110, 105));
+    h.handlers.onPointerMove(pointer(h, 300, 105));
+    h.handlers.cancel();
+    const sent = inputs(h);
+    expect(sent.map((c) => c.kind)).toEqual(["down", "move", "up"]);
+    expect(sent[2]).toMatchObject({ x: sent[1].x, y: sent[1].y });
+    h.handlers.onPointerUp(pointer(h, 300, 105));
+    expect(inputs(h)).toHaveLength(3);
+    vi.restoreAllMocks();
+  });
+});
+
 describe("disarmed", () => {
   test("a passive viewer's gestures reach nothing, in every handler", () => {
     const h = harness(false);

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { Frame, Rect, TelemetryEvent, ViewTransform } from "./types";
+import { NO_ZOOM, type Zoom, clampPan, zoomed } from "./zoom";
 
 const OVERLAY_TTL_MS = 1200;
 
@@ -12,6 +13,8 @@ interface Props {
    * used, and a stale or re-derived transform would land clicks in the wrong place.
    */
   transformRef?: React.MutableRefObject<ViewTransform | null>;
+  /** The user's pinch zoom, applied on top of the fit and folded into {@link transformRef}. */
+  zoomRef?: React.MutableRefObject<Zoom>;
   /** Armed Interact: shows the crosshair + live border so it is obvious touches now reach the game. */
   interactive?: boolean;
   /**
@@ -34,6 +37,7 @@ export function Renderer({
   frameRef,
   overlaysRef,
   transformRef,
+  zoomRef,
   interactive = false,
   overlays = true,
   onPointerDown,
@@ -65,10 +69,18 @@ export function Renderer({
         return;
       }
 
-      const s = Math.min(canvas.width / frame.sw, canvas.height / frame.sh);
-      const dw = frame.sw * s, dh = frame.sh * s;
-      const ox = (canvas.width - dw) / 2, oy = (canvas.height - dh) / 2;
-      ctx.drawImage(frame.bitmap, ox, oy, dw, dh);
+      const fit = Math.min(canvas.width / frame.sw, canvas.height / frame.sh);
+      const fitted = {
+        ox: (canvas.width - frame.sw * fit) / 2,
+        oy: (canvas.height - frame.sh * fit) / 2,
+        s: fit,
+        sx: frame.sx,
+        sy: frame.sy,
+      };
+      // The user's zoom sits on top of the fit, re-clamped here since a rotation changes the canvas size.
+      const z = zoomRef ? (zoomRef.current = clampPan(zoomRef.current, canvas.width, canvas.height)) : NO_ZOOM;
+      const { ox, oy, s } = zoomed(fitted, z);
+      ctx.drawImage(frame.bitmap, ox, oy, frame.sw * s, frame.sh * s);
       if (transformRef) transformRef.current = { ox, oy, s, sx: frame.sx, sy: frame.sy };
 
       const now = Date.now();
@@ -112,19 +124,20 @@ export function Renderer({
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [frameRef, overlaysRef, transformRef, overlays]);
+  }, [frameRef, overlaysRef, transformRef, zoomRef, overlays]);
 
   return (
     <canvas
       ref={canvasRef}
       className={`stage-canvas${interactive ? " interactive" : ""}`}
-      // touch-action is what stops the browser from swallowing a drag as a scroll/pinch gesture.
-      style={interactive ? { touchAction: "none" } : undefined}
-      onPointerDown={interactive ? onPointerDown : undefined}
-      onPointerMove={interactive ? onPointerMove : undefined}
-      onPointerUp={interactive ? onPointerUp : undefined}
-      onPointerCancel={interactive ? onPointerUp : undefined}
-      onWheel={interactive ? onWheel : undefined}
+      // touch-action is what stops the browser from swallowing a drag or a pinch as its own page gesture: the
+      // stage zooms itself, Interact or not.
+      style={{ touchAction: "none" }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      onWheel={onWheel}
     />
   );
 }

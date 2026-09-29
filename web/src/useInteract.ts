@@ -35,6 +35,8 @@ export function useInteract(
   const startRef = useRef<{ x: number; y: number; screen: { x: number; y: number } } | null>(null);
   const draggingRef = useRef(false);
   const lastMoveRef = useRef(0);
+  /** The last screen point a drag moved to, where {@link cancel} releases it. */
+  const lastRef = useRef<{ x: number; y: number } | null>(null);
 
   /** Canvas pointer event → absolute screen coordinate, or null when nothing is being drawn. */
   const toScreen = useCallback(
@@ -62,6 +64,7 @@ export function useInteract(
       e.currentTarget.setPointerCapture(e.pointerId);
       startRef.current = { x: e.clientX, y: e.clientY, screen: p };
       draggingRef.current = false;
+      lastRef.current = null;
     },
     [enabled, toScreen],
   );
@@ -82,10 +85,28 @@ export function useInteract(
       if (now - lastMoveRef.current < MOVE_INTERVAL_MS) return;
       lastMoveRef.current = now;
       const p = toScreen(e);
-      if (p) send({ cmd: "input", kind: "move", x: p.x, y: p.y, button: 1 });
+      if (p) {
+        lastRef.current = p;
+        send({ cmd: "input", kind: "move", x: p.x, y: p.y, button: 1 });
+      }
     },
     [enabled, send, toScreen],
   );
+
+  /**
+   * Abandons the gesture in progress because a second finger turned it into a pinch: a pending tap is
+   * dropped, and a drag is released where it last was — never left with the button held on the host.
+   */
+  const cancel = useCallback(() => {
+    const start = startRef.current;
+    startRef.current = null;
+    if (start && draggingRef.current) {
+      const p = lastRef.current ?? start.screen;
+      send({ cmd: "input", kind: "up", x: p.x, y: p.y, button: 1 });
+    }
+    draggingRef.current = false;
+    lastRef.current = null;
+  }, [send]);
 
   const onPointerUp = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -118,5 +139,5 @@ export function useInteract(
     [enabled, send, toScreen],
   );
 
-  return { onPointerDown, onPointerMove, onPointerUp, onWheel };
+  return { onPointerDown, onPointerMove, onPointerUp, onWheel, cancel };
 }

@@ -90,7 +90,9 @@ header .link {
   gap: 8px;
 }
 .stage-tools .interact,
-.stage-tools .overlays {
+.stage-tools .overlays,
+.stage-tools .keys,
+.stage-tools .zoom-reset {
   padding: 8px 14px;
   font-size: 13px;
   border-radius: 999px;
@@ -105,6 +107,63 @@ header .link {
   color: #fff;
 }
 .stage-tools .interact:disabled { opacity: 0.4; cursor: default; }
+.stage-tools .keys.on { border-color: var(--accent); }
+.stage-tools { flex-wrap: wrap; justify-content: flex-end; left: 10px; }
+
+/* The keyboard: a field that raises the phone's own keyboard, and the keys it lacks. */
+.keyboard-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: rgba(15, 17, 21, 0.9);
+  border-top: 1px solid var(--border);
+}
+.keyboard-row {
+  display: flex;
+  gap: 6px;
+}
+.keyboard-row.keys {
+  overflow-x: auto;
+}
+.keyboard-field {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  font-size: 16px; /* below 16px a phone zooms the page on focus */
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+}
+.keyboard-row button {
+  flex: none;
+  padding: 8px 12px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+}
+.notice {
+  position: absolute;
+  left: 50%;
+  top: 56px;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  background: rgba(15, 17, 21, 0.9);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  pointer-events: none;
+}
 /* On is the default and the quiet state; off is the one worth showing, so it's the dimmed one. */
 .stage-tools .overlays:not(.on) { opacity: 0.55; }
 .stage-tools .interact-warn {

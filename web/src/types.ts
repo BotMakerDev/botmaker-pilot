@@ -90,7 +90,26 @@ export type ControlCmd =
   | { cmd: "start" | "stop" | "pause" | "resume" }
   | { cmd: "interact"; on: boolean }
   | HelloCmd
-  | InputCmd;
+  | InputCmd
+  | KeyCmd
+  | TextCmd;
+
+/**
+ * One key press, by the SDK's `Key` constant name (`ENTER`, `ESCAPE`, `UP`…). No coordinates: it goes to
+ * whatever has focus, which on the host's own desktop the server allows only while that is the bot's window.
+ */
+export interface KeyCmd {
+  cmd: "input";
+  kind: "key";
+  key: string;
+}
+
+/** Text typed from the phone's keyboard. The host drops control characters and caps its length. */
+export interface TextCmd {
+  cmd: "input";
+  kind: "text";
+  text: string;
+}
 
 /**
  * What this client can decode. Sent on connect, and *again* with an empty `accept` if the decoder later turns

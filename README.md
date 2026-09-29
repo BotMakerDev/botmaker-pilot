@@ -177,6 +177,26 @@ the newest release — scan it on the phone to download and install the latest b
 | client → server | text | `{"cmd":"start\|stop\|pause\|resume"}` |
 | client → server | text | `{"cmd":"interact","on":true}` — arm/disarm manual Interact |
 | client → server | text | `{"cmd":"input","kind":"tap\|down\|move\|up\|scroll","x":…,"y":…,"button":1,"amount":-1}` |
+| client → server | text | `{"cmd":"input","kind":"key","key":"ENTER"}` (an SDK `Key` name) / `{"cmd":"input","kind":"text","text":"gg"}` |
+| server → client | text | `{"type":"input","kinds":["tap",…,"key","text"]}` on connect — the keyboard shows only when `key` is listed |
+| server → client | text | `{"type":"notice","text":…}` — one sentence, shown for 4 s (why a key was not sent) |
+
+### Zoom
+
+Pinch to zoom (up to 6×) and move two fingers to pan, with or without Interact. With Interact off, one finger
+pans a zoomed picture and a double tap goes back to the fit; **⤢ Fit** in the stage tools does the same. The
+zoom is folded into the transform Interact maps taps through, so a tap on a zoomed picture lands on the pixel
+under the finger. A second finger landing during an Interact drag releases the drag first, so a pinch never
+leaves a button held on the host.
+
+### Keyboard
+
+With Interact armed, **⌨ Keys** opens a text field that raises the phone's keyboard, plus Esc, Tab, ⌫, ⏎ and the
+arrows. Characters go as `text`, the row as `key`. On a background session or an emulator they always reach
+the bot's screen. **On the computer's own desktop a key is sent only while the bot's window has focus** (the
+focused window is the streamed frame): anything else could be a terminal, so the host refuses it and the phone
+shows *Tap the window first so it has focus*. A Studio whose SDK predates the keyboard never announces `key`,
+and the button does not appear.
 
 ### Overlays
 

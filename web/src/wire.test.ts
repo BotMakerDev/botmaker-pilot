@@ -26,7 +26,7 @@ import type { Endpoint, TelemetryEvent, TraceLine } from "./types";
 const GOLDEN_PATH = join(process.cwd(), "src", "wire-golden.json");
 
 /** Update together with `GOLDEN_SHA256` in the Studio repo's `TelemetryWireContractTest`. */
-const GOLDEN_SHA256 = "72869283e65c1eafdf9e2cad4f78662bd95a377a260cdae29d603993a32d76b7";
+const GOLDEN_SHA256 = "b1c12fa89d19fca28a2d414e79d55fd40281d5207e8e7dd7748030eb98f55e29";
 
 const CORPUS = JSON.parse(readFileSync(GOLDEN_PATH, "utf8")) as Record<string, Record<string, unknown>>;
 
@@ -90,6 +90,8 @@ interface Decoded {
   backgroundInput: boolean;
   overlays: TelemetryEvent[];
   trace: TraceLine[];
+  inputKinds: string[];
+  notice: string | null;
 }
 
 /**
@@ -111,6 +113,8 @@ function deliver(caseName: string): Decoded {
     backgroundInput: api.backgroundInput,
     overlays: [...api.overlaysRef.current],
     trace: [...api.trace],
+    inputKinds: [...api.inputKinds],
+    notice: api.notice,
   };
   h.unmount();
   covered.add(caseName);
@@ -285,6 +289,19 @@ describe("what the client makes of a state message", () => {
     const api = deliver("state.stopped.reason");
     expect(api.runState).toBe("stopped");
     expect(CORPUS["state.stopped.reason"].reason).toBeTypeOf("string");
+  });
+});
+
+describe("what the client makes of the keyboard messages", () => {
+  test("the host's input kinds decide whether there is a keyboard", () => {
+    const api = deliver("input.kinds");
+    expect(api.inputKinds).toContain("key");
+    expect(api.inputKinds).toContain("text");
+  });
+
+  test("a notice is held to be shown", () => {
+    const api = deliver("notice.not-focused");
+    expect(api.notice).toBe(CORPUS["notice.not-focused"].text);
   });
 });
 
