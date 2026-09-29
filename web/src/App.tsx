@@ -11,6 +11,7 @@ import { usePilot } from "./usePilot";
 import { Renderer } from "./Renderer";
 import { ConnectScreen } from "./ConnectScreen";
 import { LogDrawer } from "./LogDrawer";
+import { reachSteps } from "./reach";
 import { useInteract } from "./useInteract";
 import { useAppUpdate, LATEST_APK_URL } from "./useAppUpdate";
 
@@ -124,6 +125,13 @@ export function App() {
         {status !== "connected" && (
           <div className="reconnect-overlay">
             <p>{status === "connecting" ? "Connecting…" : "Can’t reach this connection — retrying…"}</p>
+            {status !== "connecting" && endpoint && (
+              <ol className="reach-steps">
+                {reachSteps(endpoint).map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
+            )}
             <button className="switch" onClick={disconnect}>Switch connection</button>
           </div>
         )}

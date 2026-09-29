@@ -121,7 +121,13 @@ The pairing dialog's **Reach the pilot through** list offers four free ways. The
 | **Local network** | same Wi-Fi | anyone on that network | plain `ws://` on the computer's LAN address |
 
 If the chosen way cannot start, Studio falls back to Tailscale, then the local network, and says why. It never
-falls back to a public address. Behind Funnel or a tunnel the server listens on loopback only, and on the two
+falls back to a public address.
+
+**When the phone cannot connect**, both ends say why. Over Tailscale, the pairing dialog lists each phone on the
+tailnet and whether Tailscale sees it online, with its last-seen time. On the phone, the *Can't reach this
+connection* overlay lists the steps for the way it was paired (`web/src/reach.ts`): for Tailscale, connect it,
+turn on Android's *Always-on VPN* for it and set its battery use to *Unrestricted*; for a quick tunnel, scan
+the new QR (its address changes at every start); for the local network, join the same Wi-Fi. Behind Funnel or a tunnel the server listens on loopback only, and on the two
 public ways the token in the link is the only lock.
 
 ## Remote access over HTTPS (Tailscale Funnel)
