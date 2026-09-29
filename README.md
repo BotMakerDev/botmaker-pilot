@@ -109,10 +109,25 @@ The APK bundles `web/dist` locally and loads it from the `https://localhost` Web
 the encryption), which is why `server.cleartext` is enabled in `capacitor.config.ts`. On the optional Funnel
 path it instead connects over `wss://` — real TLS on a public `*.ts.net` host.
 
+## How the phone reaches Studio
+
+The pairing dialog's **Reach the pilot through** list offers four free ways. The choice is remembered:
+
+| way | phone needs | reach | notes |
+|---|---|---|---|
+| **Tailscale** (default) | Tailscale, same account | your tailnet only | plain `ws://` on the `100.x` address; the tailnet encrypts it |
+| **Tailscale Funnel** | nothing | public HTTPS, `*.ts.net` | one-time setup on the account (below) |
+| **Cloudflare quick tunnel** | nothing | public HTTPS, `*.trycloudflare.com` | needs `cloudflared` on the computer, no account; the address is new each start, so scan again |
+| **Local network** | same Wi-Fi | anyone on that network | plain `ws://` on the computer's LAN address |
+
+If the chosen way cannot start, Studio falls back to Tailscale, then the local network, and says why. It never
+falls back to a public address. Behind Funnel or a tunnel the server listens on loopback only, and on the two
+public ways the token in the link is the only lock.
+
 ## Remote access over HTTPS (Tailscale Funnel)
 
-To reach the bot from anywhere over **real, browser-trusted HTTPS**, Studio (**View ▸ Enable Remote Pilot…**)
-asks the local `tailscale` daemon to expose its loopback pilot port publicly as
+To reach the bot from anywhere over **real, browser-trusted HTTPS**, Studio (**Tailscale Funnel** in the
+pairing dialog) asks the local `tailscale` daemon to expose its loopback pilot port publicly as
 `https://<machine>.<tailnet>.ts.net`. The phone then just opens that URL in **any browser — no Tailscale, no
 VPN** — or installs the APK and pairs with it. The dialog shows a QR to scan.
 
@@ -130,8 +145,8 @@ One-time machine/admin setup (the phone needs nothing):
    ```
 
 If Funnel isn't available/enabled, Studio surfaces the reason (including Tailscale's own "run `sudo tailscale
-set --operator=$USER`" hint when that's the cause) and falls back to a direct bind — the Tailscale `100.x` IP
-if the tunnel is up, else all interfaces with a warning — over plain `http://`/`ws://`.
+set --operator=$USER`" hint when that's the cause) as a setup checklist, and falls back to a direct bind — the
+Tailscale `100.x` IP if the tunnel is up, else the local network address with a warning.
 
 ## Releasing the APK (fast phone install)
 
