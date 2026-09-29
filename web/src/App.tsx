@@ -10,6 +10,7 @@ import {
 import { usePilot } from "./usePilot";
 import { Renderer } from "./Renderer";
 import { ConnectScreen } from "./ConnectScreen";
+import { LogDrawer } from "./LogDrawer";
 import { useInteract } from "./useInteract";
 import { useAppUpdate, LATEST_APK_URL } from "./useAppUpdate";
 
@@ -17,7 +18,8 @@ export function App() {
   const [endpoint, setEndpoint] = useState<Endpoint | null>(initialEndpoint);
   const [updateDismissed, setUpdateDismissed] = useState(false);
   const { available: updateAvailable, latest } = useAppUpdate();
-  const { status, runState, backgroundInput, frameRef, overlaysRef, send } = usePilot(endpoint);
+  const { status, runState, backgroundInput, frameRef, overlaysRef, trace, clearTrace, send } = usePilot(endpoint);
+  const [logOpen, setLogOpen] = useState(false);
 
   // Interact: tapping the stage reveals the toggle; the toggle arms it. Both start off, and both reset when
   // the connection drops — an armed session must not silently survive a reconnect to a different endpoint.
@@ -125,6 +127,7 @@ export function App() {
             <button className="switch" onClick={disconnect}>Switch connection</button>
           </div>
         )}
+        {logOpen && <LogDrawer lines={trace} onClear={clearTrace} onClose={() => setLogOpen(false)} />}
       </div>
 
       <nav className="controls">
@@ -132,6 +135,9 @@ export function App() {
         <button onClick={() => send({ cmd: "stop" })} disabled={runState === "stopped"}>■ Stop</button>
         <button onClick={() => send({ cmd: "pause" })} disabled={runState !== "running"}>⏸ Pause</button>
         <button onClick={() => send({ cmd: "resume" })} disabled={runState !== "paused"}>⏵ Resume</button>
+        <button className={`log${logOpen ? " on" : ""}`} onClick={() => setLogOpen((v) => !v)}>
+          📜 Log{trace.length > 0 ? ` (${trace.length})` : ""}
+        </button>
       </nav>
     </div>
   );

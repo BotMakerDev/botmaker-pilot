@@ -40,6 +40,19 @@ export interface TelemetryEvent {
 }
 
 /**
+ * One line of the running bot's trace (the body of a {"type":"trace","line":…} message): the bot's debug
+ * output, read by Studio. `level` is "debug" | "info" | "warn" | "error", or "" for a level Studio did not
+ * know — shown, never dropped. `ts` is the bot's clock in ms; `count` is how many identical lines it stands for.
+ */
+export interface TraceLine {
+  ts: number;
+  level: string;
+  source: string;
+  text: string;
+  count: number;
+}
+
+/**
  * A decoded picture plus the absolute surface rect its (0,0) maps to.
  *
  * `bitmap` is whichever of the two paths produced it: an `ImageBitmap` decoded from a JPEG frame, or a

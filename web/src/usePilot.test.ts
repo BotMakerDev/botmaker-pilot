@@ -533,3 +533,42 @@ describe("the H.264 stream", () => {
     h.unmount();
   });
 });
+
+describe("the trace", () => {
+  const line = (text: string) => JSON.stringify({
+    type: "trace", line: { ts: 0, level: "info", source: "Bot", text, count: 1 },
+  });
+  const state = (run: string) => JSON.stringify({ type: "state", run, backgroundInput: true });
+
+  test("a new run starts the drawer empty, and a resume keeps what it holds", () => {
+    const h = harness();
+    act(() => {
+      h.socket().open();
+      h.socket().deliver(state("running"));
+      h.socket().deliver(line("first run"));
+      h.socket().deliver(state("paused"));
+      h.socket().deliver(state("running"));
+    });
+    expect(h.api().trace.map((l) => l.text)).toEqual(["first run"]);
+
+    act(() => {
+      h.socket().deliver(state("stopped"));
+      h.socket().deliver(state("running"));
+      h.socket().deliver(line("second run"));
+    });
+    expect(h.api().trace.map((l) => l.text)).toEqual(["second run"]);
+    h.unmount();
+  });
+
+  test("a reconnect drops what it held, because Studio replays its backlog", () => {
+    const h = harness();
+    act(() => {
+      h.socket().open();
+      h.socket().deliver(line("before"));
+    });
+    expect(h.api().trace).toHaveLength(1);
+    act(() => h.socket().open());
+    expect(h.api().trace).toHaveLength(0);
+    h.unmount();
+  });
+});

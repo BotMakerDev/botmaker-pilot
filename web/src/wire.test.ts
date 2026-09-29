@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { FakeSocket } from "./testSocket";
 import { usePilot } from "./usePilot";
-import type { Endpoint, TelemetryEvent } from "./types";
+import type { Endpoint, TelemetryEvent, TraceLine } from "./types";
 
 /**
  * The pilot half of the wire contract. `types.ts` is the only place either side of this protocol names
@@ -26,7 +26,7 @@ import type { Endpoint, TelemetryEvent } from "./types";
 const GOLDEN_PATH = join(process.cwd(), "src", "wire-golden.json");
 
 /** Update together with `GOLDEN_SHA256` in the Studio repo's `TelemetryWireContractTest`. */
-const GOLDEN_SHA256 = "c12e8c813f6de5088718103b3af6c4620963c1ae45adb46f36dd226aaf1675a7";
+const GOLDEN_SHA256 = "72869283e65c1eafdf9e2cad4f78662bd95a377a260cdae29d603993a32d76b7";
 
 const CORPUS = JSON.parse(readFileSync(GOLDEN_PATH, "utf8")) as Record<string, Record<string, unknown>>;
 
@@ -89,6 +89,7 @@ interface Decoded {
   runState: Api["runState"];
   backgroundInput: boolean;
   overlays: TelemetryEvent[];
+  trace: TraceLine[];
 }
 
 /**
@@ -109,6 +110,7 @@ function deliver(caseName: string): Decoded {
     runState: api.runState,
     backgroundInput: api.backgroundInput,
     overlays: [...api.overlaysRef.current],
+    trace: [...api.trace],
   };
   h.unmount();
   covered.add(caseName);
@@ -237,6 +239,22 @@ describe("what the client makes of a telemetry message", () => {
     const e = overlay("telemetry.click");
     expect(CORPUS["telemetry.click"].event).not.toHaveProperty("_exp");
     expect(e._exp).toBeGreaterThanOrEqual(before + 1200);
+  });
+});
+
+describe("what the client makes of a trace message", () => {
+  test("a trace line is held for the log drawer with every field types.ts names", () => {
+    const { trace, overlays } = deliver("trace.debug");
+    expect(trace).toEqual([CORPUS["trace.debug"].line]);
+    expect(Object.keys(trace[0]).sort()).toEqual(["count", "level", "source", "text", "ts"]);
+    // A log line is read, not drawn: it must not become a fading overlay on the stage.
+    expect(overlays).toHaveLength(0);
+  });
+
+  test("a line of a level Studio did not know is kept, not dropped", () => {
+    const { trace } = deliver("trace.unknown");
+    expect(trace).toHaveLength(1);
+    expect(trace[0].level).toBe("");
   });
 });
 

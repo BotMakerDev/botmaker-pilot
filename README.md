@@ -152,6 +152,7 @@ the newest release — scan it on the phone to download and install the latest b
 |-----------|------|---------|
 | server → client | binary | `[16-byte header: sx,sy,sw,sh as int32 BE][JPEG bytes]` |
 | server → client | text | `{"type":"telemetry", …}` / `{"type":"state","run":"running\|stopped\|paused","backgroundInput":true}` |
+| server → client | text | `{"type":"trace","line":{"ts":…,"level":"debug\|info\|warn\|error\|","source":"Vision","text":…,"count":1}}` — the run's last 200 are replayed on connect |
 | client → server | text | `{"cmd":"start\|stop\|pause\|resume"}` |
 | client → server | text | `{"cmd":"interact","on":true}` — arm/disarm manual Interact |
 | client → server | text | `{"cmd":"input","kind":"tap\|down\|move\|up\|scroll","x":…,"y":…,"button":1,"amount":-1}` |
@@ -166,6 +167,15 @@ turning it back on shows what the bot is doing now rather than a backlog.
 
 Overlays only exist for a bot **Studio launched** (the SDK ships them only when `BM_IPC_PORT` is set), so a
 bot started by hand streams pixels and draws nothing.
+
+### Log
+
+**📜 Log** in the bottom bar opens a drawer over the stage with the run's debug lines, as Studio's Trace tab
+reads them: the time, what wrote the line (`[Vision]`), the text, and `×N` for a line repeated in a loop.
+Pick a level floor (All, Info+, Warnings+, Errors) or search. The drawer follows the newest line until you
+scroll up. A phone that connects mid-run gets the run's last 200 lines first, and a new run starts it empty.
+Whether the bot writes debug lines at all is Studio's 🐞 Debug button. Hiding lines by class or method is
+Studio's Trace tab only.
 
 ### Interact
 

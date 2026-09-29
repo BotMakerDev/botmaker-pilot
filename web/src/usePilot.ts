@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ConnStatus, ControlCmd, Endpoint, Frame, RunState, TelemetryEvent, VideoStreamInfo } from "./types";
+import type {
+  ConnStatus, ControlCmd, Endpoint, Frame, RunState, TelemetryEvent, TraceLine, VideoStreamInfo,
+} from "./types";
 
 const OVERLAY_TTL_MS = 1200;
+
+/** How many trace lines the log drawer keeps; Studio replays its last 200 on connect. */
+export const TRACE_KEEP = 500;
 
 /** Binary tag bytes of an H.264 message. A JPEG frame carries no tag — see `handleBinary`. */
 const TAG_H264 = 2;
@@ -45,6 +50,10 @@ export function usePilot(endpoint: Endpoint | null) {
   const [runState, setRunState] = useState<RunState>("stopped");
   // Whether the host can synthesize input without hijacking its real cursor (see PilotInputService).
   const [backgroundInput, setBackgroundInput] = useState(true);
+  // The run's trace, for the log drawer. State rather than a ref: a line is read by a person, not drawn at
+  // 24 FPS, and the drawer has to re-render when one arrives.
+  const [trace, setTrace] = useState<TraceLine[]>([]);
+  const runRef = useRef<RunState>("stopped");
 
   const frameRef = useRef<Frame | null>(null);
   const overlaysRef = useRef<TelemetryEvent[]>([]);
@@ -121,6 +130,8 @@ export function usePilot(endpoint: Endpoint | null) {
       ws.onopen = () => {
         setStatus("connected");
         backoffRef.current = 500;
+        // Studio replays the run's recent trace on every connect, so what was held before would arrive twice.
+        setTrace([]);
         // Before anything else on the socket: what this client can decode. A server that predates this
         // ignores the command, and a client that never sends it is served JPEG — so neither end needs a
         // version number.
@@ -150,6 +161,7 @@ export function usePilot(endpoint: Endpoint | null) {
         run?: RunState;
         backgroundInput?: boolean;
         event?: TelemetryEvent;
+        line?: TraceLine;
         codec?: string | null;
         sx?: number; sy?: number; sw?: number; sh?: number;
       };
@@ -159,7 +171,12 @@ export function usePilot(endpoint: Endpoint | null) {
         return;
       }
       if (msg.type === "state") {
-        if (msg.run) setRunState(msg.run);
+        if (msg.run) {
+          // A new run starts on an empty drawer, as Studio's own backlog does; a resume keeps what is there.
+          if (msg.run === "running" && runRef.current === "stopped") setTrace([]);
+          runRef.current = msg.run;
+          setRunState(msg.run);
+        }
         if (typeof msg.backgroundInput === "boolean") setBackgroundInput(msg.backgroundInput);
       }
       else if (msg.type === "video") {
@@ -171,6 +188,13 @@ export function usePilot(endpoint: Endpoint | null) {
         e._exp = Date.now() + OVERLAY_TTL_MS;
         const next = [...overlaysRef.current, e];
         overlaysRef.current = next.length > 40 ? next.slice(next.length - 40) : next;
+      }
+      else if (msg.type === "trace" && msg.line) {
+        const line = msg.line;
+        setTrace((held) => {
+          const next = [...held, line];
+          return next.length > TRACE_KEEP ? next.slice(next.length - TRACE_KEEP) : next;
+        });
       }
     };
 
@@ -214,8 +238,12 @@ export function usePilot(endpoint: Endpoint | null) {
       frameRef.current?.bitmap.close();
       frameRef.current = null;
       overlaysRef.current = [];
+      setTrace([]);
+      runRef.current = "stopped";
     };
   }, [endpoint]);
 
-  return { status, runState, backgroundInput, frameRef, overlaysRef, send };
+  const clearTrace = useCallback(() => setTrace([]), []);
+
+  return { status, runState, backgroundInput, frameRef, overlaysRef, trace, clearTrace, send };
 }
