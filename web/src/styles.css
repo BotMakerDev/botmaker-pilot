@@ -384,6 +384,16 @@ header .link {
 .about .check-update:disabled { opacity: 0.5; cursor: default; }
 .about-note { color: var(--muted); }
 .about-note.update { color: #2ecc71; font-weight: 600; text-decoration: underline; }
+/* Inside the APK the update action is a button (UpdateLink installs in place); it reads as the link it was. */
+button.update-get, button.about-note.update {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+.update-error { flex-basis: 100%; font-size: 12px; }
+.about .update-error { color: #ff6b6b; }
 .connect h1 { margin: 0; }
 .connect .muted { color: var(--muted); margin: 0 0 12px; }
 .connect label { font-size: 13px; color: var(--muted); margin-top: 8px; }

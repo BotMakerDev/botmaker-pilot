@@ -56,3 +56,5 @@ release:
 files:
   artifacts:
     - path: botpilot.apk
+    # What the in-app updater verifies the download against (ApkUpdater.java).
+    - path: botpilot.apk.sha256

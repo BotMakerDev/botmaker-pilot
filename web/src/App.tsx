@@ -16,7 +16,8 @@ import { useInteract } from "./useInteract";
 import { useStageGestures } from "./useStageGestures";
 import { KeyboardBar } from "./KeyboardBar";
 import { NO_ZOOM, type Zoom } from "./zoom";
-import { useAppUpdate, LATEST_APK_URL } from "./useAppUpdate";
+import { useAppUpdate } from "./useAppUpdate";
+import { UpdateLink } from "./UpdateLink";
 
 export function App() {
   const [endpoint, setEndpoint] = useState<Endpoint | null>(initialEndpoint);
@@ -76,9 +77,9 @@ export function App() {
     updateAvailable && !updateDismissed ? (
       <div className="update-banner">
         <span>Update available{latest ? ` (${latest})` : ""}</span>
-        <a className="update-get" href={LATEST_APK_URL} target="_blank" rel="noreferrer">
+        <UpdateLink tag={latest} className="update-get">
           Get it
-        </a>
+        </UpdateLink>
         <button className="update-x" onClick={() => setUpdateDismissed(true)} aria-label="Dismiss">
           ✕
         </button>

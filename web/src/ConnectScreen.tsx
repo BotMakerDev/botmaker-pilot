@@ -7,7 +7,8 @@ import {
   type SavedConnection,
 } from "./config";
 import { QrScanner } from "./QrScanner";
-import { useAppUpdate, LATEST_APK_URL } from "./useAppUpdate";
+import { useAppUpdate } from "./useAppUpdate";
+import { UpdateLink } from "./UpdateLink";
 
 interface Props {
   onConnect: (ep: Endpoint) => void;
@@ -36,7 +37,7 @@ export function ConnectScreen({ onConnect }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [recent, setRecent] = useState<SavedConnection[]>(() => loadConnections());
-  const { version, result, checkNow } = useAppUpdate();
+  const { version, latest, result, checkNow } = useAppUpdate();
 
   const applyPaste = (text: string) => {
     const ep = parseUrl(text);
@@ -142,9 +143,9 @@ export function ConnectScreen({ onConnect }: Props) {
         </button>
         {result === "uptodate" && <span className="about-note">Up to date</span>}
         {result === "available" && (
-          <a className="about-note update" href={LATEST_APK_URL} target="_blank" rel="noreferrer">
+          <UpdateLink tag={latest} className="about-note update">
             Update available — Get it
-          </a>
+          </UpdateLink>
         )}
         {result === "error" && <span className="about-note">Couldn’t check (offline?)</span>}
       </div>
