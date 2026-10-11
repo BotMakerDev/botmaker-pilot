@@ -156,12 +156,8 @@ Tailscale `100.x` IP if the tunnel is up, else the local network address with a 
 
 ## Releasing the APK (fast phone install)
 
-Pushing a version tag builds the APK in CI and attaches it to a GitHub Release as `botpilot.apk`
-(`.github/workflows/release-apk.yml`):
-
-```bash
-git tag v0.1.0 && git push origin v0.1.0
-```
+The umbrella release tags it (`./release.sh --pilot <version>`, from the umbrella root); the tag builds the
+APK in CI and attaches it to a GitHub Release as `botpilot.apk` (`.github/workflows/release-apk.yml`).
 
 Studio's Remote Pilot dialog shows an "install app" QR pointing at the stable permalink
 `https://github.com/BotMakerDev/botmaker-pilot/releases/latest/download/botpilot.apk`, which always resolves to
