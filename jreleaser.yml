@@ -45,13 +45,10 @@ release:
       enabled: false
     prerelease:
       pattern: .*-.*
-    # No `external` here, and no tools/changelog-section.sh either: this repository has no CHANGELOG.md and
-    # is the one module release.sh's check_changelog deliberately exempts. So the notes are JReleaser's own
-    # commit-log changelog since the previous tag — which is strictly more than the release used to carry,
-    # since the step this replaced attached the APK with no body at all. Give it a CHANGELOG.md and the
-    # other seven repositories' arrangement applies unchanged.
+    # The workflow writes release-notes.md with tools/changelog-section.sh, the same script the umbrella's
+    # release gate reads to refuse a release whose changelog does not describe it.
     changelog:
-      formatted: ALWAYS
+      external: release-notes.md
 
 files:
   artifacts:

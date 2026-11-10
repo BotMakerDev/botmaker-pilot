@@ -113,16 +113,23 @@ jobs:
 
       # Without the `v` — jreleaser.yml's tagName is `v{{projectVersion}}`, so passing the tag whole would
       # have it look for `vv0.1.0`.
-      - name: Resolve the version from the tag
-        run: echo "JRELEASER_PROJECT_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+      # The same extractor the umbrella's release gate reads: a release whose notes come from a different rule
+      # than the one that gated it can pass the gate and then publish something else. A failure here means the
+      # tag was cut by hand, past the gate; the notes degrade to commit subjects.
+      - name: Read this release's changelog section
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if ! tools/changelog-section.sh "$version" > release-notes.md; then
+            echo "::warning::CHANGELOG.md has no section for $version — falling back to commit subjects"
+            git log --pretty='- %s' "$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo HEAD)..HEAD" \
+              > release-notes.md
+          fi
+          echo "JRELEASER_PROJECT_VERSION=$version" >> "$GITHUB_ENV"
+          cat release-notes.md
 
       # The release, its assets and its notes are declared in jreleaser.yml. The tag is not — it was pushed
-      # by the umbrella's release.sh, which is what orders a release across the eight repositories, the one
+      # by the umbrella's release tool (sluice), which orders a release across the repositories, the one
       # thing JReleaser has no way to express.
-      #
-      # This replaced softprops/action-gh-release, which attached the APK with NO BODY AT ALL. This
-      # repository has no CHANGELOG.md and is the one module release.sh's changelog gate exempts, so the
-      # notes are JReleaser's own commit-log changelog since the previous tag — strictly more than before.
       - name: Publish GitHub Release
         uses: jreleaser/release-action@v2
         with:
