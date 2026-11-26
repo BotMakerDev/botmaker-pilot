@@ -10,6 +10,7 @@ Release only.
 
 ### Added
 
+- The release attaches `web.zip`, the page the SDK serves to a browser.
 - The screen stays on while connected.
 - Android's Back closes the keyboard, then the log, then the connection, instead of leaving the app.
 - The phone says why there is no picture (the game window is closed, for example).

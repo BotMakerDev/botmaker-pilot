@@ -103,6 +103,12 @@ jobs:
           npx cap sync android
           cd android && ./gradlew assembleRelease -PappVersion="$GITHUB_REF_NAME" --no-daemon
 
+      # The page the SDK serves to a browser: web/dist's files at the zip's root. botmaker-sdk pins this asset
+      # by name and hash (sluice.yml, asset-pins).
+      - name: Zip the web build
+        working-directory: web/dist
+        run: zip -r -X ../../web.zip .
+
       # The name is part of a contract, not a convenience: Studio's Remote Pilot QR code points at
       # releases/latest/download/botpilot.apk, so a phone scanning it gets a 404 the moment this is renamed.
       # The .sha256 beside it is what the in-app updater (ApkUpdater) checks the download against.

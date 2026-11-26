@@ -59,3 +59,5 @@ files:
     - path: botpilot.apk
     # What the in-app updater verifies the download against (ApkUpdater.java).
     - path: botpilot.apk.sha256
+    # The browser page, pinned by botmaker-sdk's pom (sluice.yml, asset-pins): the name is part of that contract.
+    - path: web.zip

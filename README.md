@@ -7,8 +7,9 @@ computer-side setup, nothing exposed publicly). Reaching the bot from **anywhere
 an optional "Advanced" step in Studio that turns on Tailscale **Funnel** (public HTTPS); a plain-`ws://` LAN
 bind is the last-resort fallback.
 
-BotPilot is the client half; the server half lives in **BotMaker Studio** (`services/pilot/PilotServer`),
-which serves this UI over HTTP and speaks a WebSocket protocol carrying:
+BotPilot is the client half. The server half is the **BotMaker SDK** plugin (`botmaker-sdk`,
+`plugin/pilot/PilotServer`), which runs inside Studio, serves this UI over HTTP and speaks a WebSocket protocol
+carrying:
 
 - **binary** frames — the bot's target surface, in one of two formats (loss-tolerant, ~24 FPS)
 - **text** messages — telemetry events (JSON) server→client, and control commands (JSON) client→server
@@ -40,7 +41,7 @@ botmaker-pilot/
 └── capacitor.config.ts
 ```
 
-The same `web/` build is served two ways: directly by Studio for browsers, and bundled into the APK by
+The same `web/` build is served two ways: by the SDK plugin's server for browsers, and bundled into the APK by
 Capacitor for a native mobile app.
 
 ### Pairing & updates
@@ -59,11 +60,10 @@ Capacitor for a native mobile app.
   saved connection stays valid across Studio restarts). When a socket is stuck reconnecting, a **Switch
   connection** overlay returns to the list without dropping the saved entry.
 - **In-app auto-update.** On launch the app best-effort checks the latest GitHub release
-  (`web/src/useAppUpdate.ts`, throttled) and, if newer than the built-in `__APP_VERSION__` (injected from
-  `web/package.json`), shows an **Update available** banner linking to the stable
-  `releases/latest/download/botpilot.apk`. The connect-screen footer also shows the current version and a
-  **Check for updates** button (force-checks, ignoring the throttle). Keep `web/package.json`'s `version` in
-  step with the release tags.
+  (`web/src/useAppUpdate.ts`, throttled) and, if newer than the built-in `__APP_VERSION__` (the release tag;
+  `web/vite.config.ts`), shows an **Update available** banner. The connect-screen footer also shows the current
+  version and a **Check for updates** button (force-checks, ignoring the throttle). The app alone checks: a
+  browser is served by the computer and shows neither.
 
 ## Building
 
@@ -82,27 +82,24 @@ npm run dist                           # web build → cap sync → assembleDebu
 ### Tests
 
 ```bash
-cd web && npm test                     # Vitest, jsdom — runs in ~2s, no device and no network
+cd web && npm test                     # Vitest, jsdom — a few seconds, no device and no network
 #   watch loop: npm run test:watch
 ```
 
-Five suites next to the code they cover, all on the push gate alongside the typecheck: `useInteract`
-(where a tap lands), `config` (what is stored on the device and migrated from older builds), `useAppUpdate`
-(whether a user is offered an update at all), `usePilot` (the socket, the frame header and the bitmap
-lifecycle) and `wire` (below). Two `usePilot` tests are `.skip`ped with the bug they document — see
-`docs/refactor/bugs.md` in the umbrella repo.
+The suites sit next to the code they cover. CI runs the typecheck and build only, so run them here.
 
-**The wire contract is checked from both ends.** `src/wire-golden.json` is a corpus of every message
-Studio can send, committed **byte-identically** here and in `botmaker-studio`
-(`src/test/resources/pilot/`). `wire.test.ts` feeds each one through the real `usePilot` and asserts what
-the client decodes; Studio's `TelemetryWireContractTest` asserts its serializer emits exactly those bytes.
+**The wire contract is checked from both ends.** `web/src/wire-golden.json` is a corpus of every message
+the server can send, committed **byte-identically** here and in `botmaker-sdk`
+(`src/test/resources/pilot-wire/`). `wire.test.ts` feeds each one through the real `usePilot` and asserts what
+the client decodes; the SDK's `TelemetryWireContractTest` asserts its serializer emits exactly those bytes.
 Neither test can see the other repo, so both assert the corpus' **SHA-256** — change the protocol on one
 side and the other side goes red until it is changed too. **Editing one copy means editing all four
 things: both files and both digest constants.**
 
-Studio serves the web UI itself: a prebuilt `dist` is committed under
-`botmaker-studio/src/main/resources/pilot/`, and `mvn -Ppilot package` in Studio rebuilds it from this
-`web/` source (downloading a project-local Node — nothing installed system-wide).
+The SDK serves the web UI to a browser from its own jar. Each release here attaches `web.zip` (`web/dist`);
+the SDK's pom pins it by version and hash (`pilot.web.*`, moved by the umbrella release), so an SDK carries the
+page of the pilot release before it. To build an SDK with this checkout's page instead:
+`mvn -pl botmaker-sdk -am install -Ppilot` from the umbrella root (it downloads its own Node).
 
 The APK bundles `web/dist` locally and loads it from the `https://localhost` WebView origin. On the default
 (tailnet) path it connects out to Studio over plain `ws://` to the Tailscale `100.x` IP (the tailnet itself is
@@ -156,8 +153,9 @@ Tailscale `100.x` IP if the tunnel is up, else the local network address with a 
 
 ## Releasing the APK (fast phone install)
 
-The umbrella release tags it (`./release.sh --pilot <version>`, from the umbrella root); the tag builds the
-APK in CI and attaches it to a GitHub Release as `botpilot.apk` (`.github/workflows/release-apk.yml`).
+The umbrella release tags it (`sluice release --pilot <version>`, from the umbrella root); the tag builds in CI
+(`.github/workflows/ci.yml`, job `apk`) and attaches to a GitHub Release `botpilot.apk`, its `.sha256` and
+`web.zip`.
 
 Studio's Remote Pilot dialog shows an "install app" QR pointing at the stable permalink
 `https://github.com/BotMakerDev/botmaker-pilot/releases/latest/download/botpilot.apk`, which always resolves to
@@ -239,5 +237,5 @@ the server enforces, not the client:
 
 ## Status
 
-Web client (browser + PWA) and Android APK build end-to-end against Studio's `PilotServer`. See the
-umbrella repo `botmaker/` for the server side.
+Web client (browser + PWA) and Android APK build end-to-end against the SDK's `PilotServer`
+(`botmaker-sdk`, `plugin/pilot`).
