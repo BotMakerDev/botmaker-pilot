@@ -5,7 +5,9 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.WindowManager;
+import android.webkit.WebView;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
@@ -24,7 +26,23 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // A local plugin is registered before the bridge starts, which super.onCreate does.
         registerPlugin(ApkUpdater.class);
+        registerPlugin(KeepAwake.class);
         super.onCreate(savedInstanceState);
+
+        // Back steps through what the web app has open (useBack.ts) before it leaves the app.
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                WebView web = getBridge().getWebView();
+                if (web.canGoBack()) {
+                    web.goBack();
+                    return;
+                }
+                setEnabled(false);
+                getOnBackPressedDispatcher().onBackPressed();
+                setEnabled(true);
+            }
+        });
 
         // Draw under the display cutout in landscape too, instead of letterboxing with the default (light)
         // window background — that letterbox is the "thick white border" seen when the phone is sideways.

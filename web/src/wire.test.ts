@@ -26,7 +26,7 @@ import type { Endpoint, TelemetryEvent, TraceLine } from "./types";
 const GOLDEN_PATH = join(process.cwd(), "src", "wire-golden.json");
 
 /** Update together with `GOLDEN_SHA256` in the Studio repo's `TelemetryWireContractTest`. */
-const GOLDEN_SHA256 = "b1c12fa89d19fca28a2d414e79d55fd40281d5207e8e7dd7748030eb98f55e29";
+const GOLDEN_SHA256 = "0b751c506853a217a49ac73b19cefc89f1293f728943f67325c3cfcc4750874c";
 
 const CORPUS = JSON.parse(readFileSync(GOLDEN_PATH, "utf8")) as Record<string, Record<string, unknown>>;
 
@@ -92,6 +92,7 @@ interface Decoded {
   trace: TraceLine[];
   inputKinds: string[];
   notice: string | null;
+  reason: string | null;
 }
 
 /**
@@ -115,6 +116,7 @@ function deliver(caseName: string): Decoded {
     trace: [...api.trace],
     inputKinds: [...api.inputKinds],
     notice: api.notice,
+    reason: api.reason,
   };
   h.unmount();
   covered.add(caseName);
@@ -284,11 +286,16 @@ describe("what the client makes of a state message", () => {
 
   test("a reason rides along with the state and does not disturb it", () => {
     // Studio sends this when the stream has had nothing to show for a couple of seconds, so a blank canvas
-    // says why. The client does not render it yet; what is pinned here is that the extra key is harmless —
-    // a state message it cannot fully use must still drive the run state.
+    // says why.
     const api = deliver("state.stopped.reason");
     expect(api.runState).toBe("stopped");
-    expect(CORPUS["state.stopped.reason"].reason).toBeTypeOf("string");
+    expect(api.reason).toBe(CORPUS["state.stopped.reason"].reason);
+  });
+
+  test("a heartbeat changes nothing a person sees", () => {
+    const api = deliver("ping");
+    expect(api.notice).toBeNull();
+    expect(api.overlays).toHaveLength(0);
   });
 });
 

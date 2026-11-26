@@ -44,11 +44,29 @@ function endpointKey(ep: Endpoint): string {
   return `${ep.secure ? "wss" : "ws"}://${ep.host}:${ep.port}`;
 }
 
+export function wsUrl(ep: Endpoint): string {
+  const proto = ep.secure ? "wss" : "ws";
+  return `${proto}://${ep.host}:${ep.port}/ws?token=${encodeURIComponent(ep.token)}`;
+}
+
+/** Whether a socket can be opened to this address at all: a bare host name or IP, and a real port. */
+export function validEndpoint(ep: Endpoint): boolean {
+  if (!/^([^\s/\\?#@:[\]%]+|\[[0-9a-fA-F:.]+\])$/.test(ep.host)) return false;
+  if (!Number.isInteger(ep.port) || ep.port < 1 || ep.port > 65535) return false;
+  try {
+    new URL(wsUrl(ep));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** All saved connections, most-recently-connected first. Migrates the legacy single-endpoint key once. */
 export function loadConnections(): SavedConnection[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as SavedConnection[];
+    // An address saved before it was checked would be reconnected to on every launch.
+    if (raw) return (JSON.parse(raw) as SavedConnection[]).filter((c) => validEndpoint(c.endpoint));
   } catch {
     /* fall through to migration / empty */
   }

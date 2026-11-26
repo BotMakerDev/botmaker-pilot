@@ -78,7 +78,10 @@ export function useAppUpdate(): {
   version: string;
   result: CheckResult;
   checkNow: () => void;
+  /** Only the installed app has a version of its own to update; a browser is served whatever the host has. */
+  supported: boolean;
 } {
+  const supported = Capacitor.isNativePlatform();
   const [latest, setLatest] = useState<string | null>(null);
   const [result, setResult] = useState<CheckResult>("idle");
 
@@ -108,10 +111,11 @@ export function useAppUpdate(): {
   }, []);
 
   useEffect(() => {
+    if (!supported) return;
     const ctrl = new AbortController();
     void runCheck(false, ctrl.signal);
     return () => ctrl.abort();
-  }, [runCheck]);
+  }, [runCheck, supported]);
 
   return {
     available: latest !== null,
@@ -119,5 +123,6 @@ export function useAppUpdate(): {
     version: APP_VERSION,
     result,
     checkNow: () => void runCheck(true),
+    supported,
   };
 }

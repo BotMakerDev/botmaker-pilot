@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import type { Endpoint, ViewTransform } from "./types";
+import type { ConnStatus, Endpoint, ViewTransform } from "./types";
+import { useBack } from "./useBack";
+import { useKeepAwake } from "./useKeepAwake";
 import {
   initialEndpoint,
   upsertConnection,
@@ -19,20 +21,37 @@ import { NO_ZOOM, type Zoom } from "./zoom";
 import { useAppUpdate } from "./useAppUpdate";
 import { UpdateLink } from "./UpdateLink";
 
+/** What the overlay says while the socket is not live. */
+function connectionMessage(status: ConnStatus): string {
+  switch (status) {
+    case "connecting":
+      return "Connecting…";
+    case "rejected":
+      return "This PC no longer accepts this pairing code. Scan the QR again.";
+    case "invalid":
+      return "This address cannot be used. Enter it again.";
+    default:
+      return "Can’t reach this connection — retrying…";
+  }
+}
+
 export function App() {
   const [endpoint, setEndpoint] = useState<Endpoint | null>(initialEndpoint);
   const [updateDismissed, setUpdateDismissed] = useState(false);
   const { available: updateAvailable, latest } = useAppUpdate();
   const {
-    status, runState, backgroundInput, frameRef, overlaysRef, trace, clearTrace, send, inputKinds, notice,
+    status, runState, backgroundInput, reason, frameRef, overlaysRef, trace, clearTrace, send, inputKinds,
+    notice,
   } = usePilot(endpoint);
+  const connected = status === "connected";
+  useKeepAwake(connected);
   const [keyboard, setKeyboard] = useState(false);
   // Only a host that announced it takes keys gets a keyboard button; an older SDK never says so.
   const takesKeys = inputKinds.includes("key");
   const [logOpen, setLogOpen] = useState(false);
 
-  // Interact: tapping the stage reveals the toggle; the toggle arms it. Both start off, and both reset when
-  // the connection drops — an armed session must not silently survive a reconnect to a different endpoint.
+  // Interact: tapping the stage reveals the toggle; the toggle arms it. Both start off, and Interact is
+  // disarmed when the connection drops — an armed session must not silently survive a reconnect.
   const [controlsShown, setControlsShown] = useState(false);
   const [interact, setInteract] = useState(false);
   // Unlike Interact, this one is remembered: it is a viewing preference, not a capability that would be
@@ -54,9 +73,13 @@ export function App() {
   }, [status, interact, send]);
 
   useEffect(() => {
+    if (status !== "connected") setInteract(false);
+  }, [status]);
+
+  useEffect(() => {
     if (!endpoint) {
-      setInteract(false);
       setControlsShown(false);
+      setLogOpen(false);
     }
   }, [endpoint]);
 
@@ -72,6 +95,12 @@ export function App() {
   // Non-destructive: drop the live socket but keep the endpoint in history so it stays in "Recent".
   const disconnect = () => setEndpoint(null);
 
+  // Back closes the innermost thing: the keyboard, then the log, then the connection.
+  useBack(endpoint !== null, () => {
+    if (keyboard) setKeyboard(false);
+    else if (logOpen) setLogOpen(false);
+    else disconnect();
+  });
 
   const updateBanner =
     updateAvailable && !updateDismissed ? (
@@ -101,7 +130,7 @@ export function App() {
       <header>
         <b>BotPilot</b>
         <span className={`conn ${status}`}>{status}</span>
-        <span className={`run ${runState}`}>{runState}</span>
+        <span className={`run ${connected ? runState : ""}`}>{connected ? runState : "—"}</span>
         <button className="link" onClick={disconnect}>disconnect</button>
       </header>
 
@@ -115,6 +144,7 @@ export function App() {
           overlays={overlays}
           {...gestures}
         />
+        {connected && reason && <div className="no-picture">{reason}</div>}
         {controlsShown && (
           <div className="stage-tools" onClick={(e) => e.stopPropagation()}>
             <button
@@ -151,8 +181,8 @@ export function App() {
         {notice && <div className="notice">{notice}</div>}
         {status !== "connected" && (
           <div className="reconnect-overlay">
-            <p>{status === "connecting" ? "Connecting…" : "Can’t reach this connection — retrying…"}</p>
-            {status !== "connecting" && endpoint && (
+            <p>{connectionMessage(status)}</p>
+            {status === "reconnecting" && (
               <ol className="reach-steps">
                 {reachSteps(endpoint).map((step) => (
                   <li key={step}>{step}</li>
@@ -166,10 +196,10 @@ export function App() {
       </div>
 
       <nav className="controls">
-        <button className="go" onClick={() => send({ cmd: "start" })} disabled={runState === "running"}>▶ Start</button>
-        <button onClick={() => send({ cmd: "stop" })} disabled={runState === "stopped"}>■ Stop</button>
-        <button onClick={() => send({ cmd: "pause" })} disabled={runState !== "running"}>⏸ Pause</button>
-        <button onClick={() => send({ cmd: "resume" })} disabled={runState !== "paused"}>⏵ Resume</button>
+        <button className="go" onClick={() => send({ cmd: "start" })} disabled={!connected || runState === "running"}>▶ Start</button>
+        <button onClick={() => send({ cmd: "stop" })} disabled={!connected || runState === "stopped"}>■ Stop</button>
+        <button onClick={() => send({ cmd: "pause" })} disabled={!connected || runState !== "running"}>⏸ Pause</button>
+        <button onClick={() => send({ cmd: "resume" })} disabled={!connected || runState !== "paused"}>⏵ Resume</button>
         <button className={`log${logOpen ? " on" : ""}`} onClick={() => setLogOpen((v) => !v)}>
           📜 Log{trace.length > 0 ? ` (${trace.length})` : ""}
         </button>

@@ -4,11 +4,13 @@ import {
   parseUrl,
   loadConnections,
   removeConnection,
+  validEndpoint,
   type SavedConnection,
 } from "./config";
 import { QrScanner } from "./QrScanner";
 import { useAppUpdate } from "./useAppUpdate";
 import { UpdateLink } from "./UpdateLink";
+import { useBack } from "./useBack";
 
 interface Props {
   onConnect: (ep: Endpoint) => void;
@@ -37,7 +39,8 @@ export function ConnectScreen({ onConnect }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [recent, setRecent] = useState<SavedConnection[]>(() => loadConnections());
-  const { version, latest, result, checkNow } = useAppUpdate();
+  const { version, latest, result, checkNow, supported } = useAppUpdate();
+  useBack(scanning, () => setScanning(false));
 
   const applyPaste = (text: string) => {
     const ep = parseUrl(text);
@@ -54,7 +57,7 @@ export function ConnectScreen({ onConnect }: Props) {
   const onScan = (text: string) => {
     setScanning(false);
     const ep = parseUrl(text);
-    if (ep && ep.token) {
+    if (ep && ep.token && validEndpoint(ep)) {
       onConnect(ep);
     } else {
       setError("That QR isn’t a BotPilot link. Scan the LEFT QR in Studio’s Remote Pilot dialog.");
@@ -69,7 +72,12 @@ export function ConnectScreen({ onConnect }: Props) {
       setError("Host, port and token are all required.");
       return;
     }
-    onConnect({ host, port: p, token, secure });
+    const ep = { host: host.trim(), port: p, token: token.trim(), secure };
+    if (!validEndpoint(ep)) {
+      setError("Host must be a name or IP address with no “http://”, and the port a number from 1 to 65535.");
+      return;
+    }
+    onConnect(ep);
   };
 
   if (scanning) {
@@ -138,9 +146,11 @@ export function ConnectScreen({ onConnect }: Props) {
 
       <div className="about">
         <span>BotPilot v{version}</span>
-        <button className="check-update" onClick={checkNow} disabled={result === "checking"}>
-          {result === "checking" ? "Checking…" : "Check for updates"}
-        </button>
+        {supported && (
+          <button className="check-update" onClick={checkNow} disabled={result === "checking"}>
+            {result === "checking" ? "Checking…" : "Check for updates"}
+          </button>
+        )}
         {result === "uptodate" && <span className="about-note">Up to date</span>}
         {result === "available" && (
           <UpdateLink tag={latest} className="about-note update">

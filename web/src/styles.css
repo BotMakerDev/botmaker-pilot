@@ -109,6 +109,22 @@ header .link {
 .stage-tools .interact:disabled { opacity: 0.4; cursor: default; }
 .stage-tools .keys.on { border-color: var(--accent); }
 .stage-tools { flex-wrap: wrap; justify-content: flex-end; left: 10px; }
+/* The strip spans the stage's width; only what is in it takes a touch. */
+.stage-tools { pointer-events: none; }
+.stage-tools > * { pointer-events: auto; }
+
+/* Why the host has no picture, in place of one. */
+.no-picture {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+  pointer-events: none;
+}
 
 /* The keyboard: a field that raises the phone's own keyboard, and the keys it lacks. */
 .keyboard-bar {

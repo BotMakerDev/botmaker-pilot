@@ -14,7 +14,7 @@ export class FakeSocket {
   binaryType = "blob";
   sent: string[] = [];
   onopen: (() => void) | null = null;
-  onclose: (() => void) | null = null;
+  onclose: ((ev: { code: number }) => void) | null = null;
   onerror: (() => void) | null = null;
   onmessage: ((ev: { data: unknown }) => void) | null = null;
 
@@ -26,10 +26,10 @@ export class FakeSocket {
     this.sent.push(data);
   }
 
-  close() {
+  close(code = 1000) {
     if (this.readyState === FakeSocket.CLOSED) return;
     this.readyState = FakeSocket.CLOSED;
-    this.onclose?.();
+    this.onclose?.({ code });
   }
 
   /* Test-side drivers. */

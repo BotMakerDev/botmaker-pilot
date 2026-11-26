@@ -176,6 +176,7 @@ the newest release — scan it on the phone to download and install the latest b
 | client → server | text | `{"cmd":"input","kind":"key","key":"ENTER"}` (an SDK `Key` name) / `{"cmd":"input","kind":"text","text":"gg"}` |
 | server → client | text | `{"type":"input","kinds":["tap",…,"key","text"]}` on connect — the keyboard shows only when `key` is listed |
 | server → client | text | `{"type":"notice","text":…}` — one sentence, shown for 4 s (why a key was not sent) |
+| server → client | text | `{"type":"ping"}` every 5 s — after the first one, 15 s of silence is taken as a dead link and the phone reconnects |
 
 ### Zoom
 

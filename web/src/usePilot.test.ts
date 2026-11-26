@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { FakeSocket } from "./testSocket";
-import { usePilot } from "./usePilot";
+import { PING_TIMEOUT_MS, usePilot } from "./usePilot";
 import type { Endpoint, TelemetryEvent } from "./types";
 
 /**
@@ -327,10 +327,8 @@ describe("binary frames", () => {
     expect(overlaysRef.current).toEqual([]);
   });
 
-  test.skip(
-    "B13 is unfixed: verified red on this commit — a decode that resolves after teardown publishes its "
-      + "bitmap into the ref the cleanup just cleared, and nothing ever closes it. Delete the .skip in "
-      + "Phase 4 with P5's fix.",
+  test(
+    "a decode that resolves after teardown is closed, not published",
     async () => {
       const h = harness();
       act(() => h.socket().open());
@@ -344,10 +342,8 @@ describe("binary frames", () => {
     },
   );
 
-  test.skip(
-    "B13 is unfixed: verified red on this commit — decodes run concurrently, so a frame whose decode "
-      + "finishes late overwrites a newer one and the video runs backwards. Delete the .skip in Phase 4 "
-      + "with P5's fix.",
+  test(
+    "a frame whose decode finishes late does not overwrite a newer one",
     async () => {
       const h = harness();
       act(() => h.socket().open());
@@ -361,6 +357,99 @@ describe("binary frames", () => {
       h.unmount();
     },
   );
+});
+
+describe("when the link goes", () => {
+  function visibility(state: "visible" | "hidden") {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: state });
+    act(() => void document.dispatchEvent(new Event("visibilitychange")));
+  }
+  afterEach(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+  });
+
+  test("a refused token is not retried", () => {
+    vi.useFakeTimers();
+    const h = harness();
+    act(() => h.socket().open());
+    act(() => h.socket().close(1008));
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(h.api().status).toBe("rejected");
+    expect(FakeSocket.instances).toHaveLength(1);
+    h.unmount();
+  });
+
+  test("an address no socket accepts is reported rather than thrown", () => {
+    vi.stubGlobal("WebSocket", class {
+      constructor() {
+        throw new SyntaxError("invalid URL");
+      }
+    });
+    const h = harness();
+    expect(h.api().status).toBe("invalid");
+    h.unmount();
+  });
+
+  test("a host that sent a heartbeat and then nothing is reconnected to", () => {
+    vi.useFakeTimers();
+    const h = harness();
+    act(() => h.socket().open());
+    act(() => h.socket().deliver(JSON.stringify({ type: "ping" })));
+    act(() => vi.advanceTimersByTime(PING_TIMEOUT_MS + 2000));
+    expect(FakeSocket.instances.length).toBeGreaterThan(1);
+    expect(FakeSocket.instances[0].readyState).toBe(FakeSocket.CLOSED);
+    h.unmount();
+  });
+
+  test("a host that never sends heartbeats may be as quiet as it likes", () => {
+    vi.useFakeTimers();
+    const h = harness();
+    act(() => h.socket().open());
+    act(() => vi.advanceTimersByTime(10 * PING_TIMEOUT_MS));
+    expect(FakeSocket.instances).toHaveLength(1);
+    h.unmount();
+  });
+
+  test("a hidden app lets the socket go and takes a new one when it is back", () => {
+    vi.useFakeTimers();
+    const h = harness();
+    act(() => h.socket().open());
+    visibility("hidden");
+    expect(h.socket().readyState).toBe(FakeSocket.CLOSED);
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(FakeSocket.instances).toHaveLength(1);
+    visibility("visible");
+    expect(FakeSocket.instances).toHaveLength(2);
+    h.unmount();
+  });
+
+  test("a network that comes back gets a socket of its own", () => {
+    const h = harness();
+    act(() => h.socket().open());
+    act(() => void window.dispatchEvent(new Event("online")));
+    expect(FakeSocket.instances).toHaveLength(2);
+    expect(FakeSocket.instances[0].readyState).toBe(FakeSocket.CLOSED);
+    h.unmount();
+  });
+
+  test("a reason takes the picture off, and a frame still decoding does not bring it back", async () => {
+    const h = harness();
+    act(() => h.socket().open());
+    act(() => h.socket().deliver(frame(0, 0, 10, 10)));
+    const shown = decoder.finish();
+    await settle();
+    act(() => h.socket().deliver(frame(0, 0, 10, 10)));
+    act(() => h.socket().deliver(JSON.stringify({ type: "state", reason: "The game window is closed." })));
+    const late = decoder.finish(1);
+    await settle();
+    expect(h.api().reason).toBe("The game window is closed.");
+    expect(h.api().frameRef.current).toBeNull();
+    expect(shown.closed).toBe(true);
+    expect(late.closed).toBe(true);
+    act(() => h.socket().deliver(JSON.stringify({ type: "state", run: "stopped" })));
+    expect(h.api().reason).toBeNull();
+    h.unmount();
+  });
 });
 
 /**

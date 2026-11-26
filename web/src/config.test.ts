@@ -7,6 +7,7 @@ import {
   removeConnection,
   touchConnection,
   upsertConnection,
+  validEndpoint,
 } from "./config";
 import type { Endpoint } from "./types";
 
@@ -27,6 +28,26 @@ function ep(host: string, port: number, token = "t", secure = false): Endpoint {
 beforeEach(() => {
   localStorage.clear();
   history.replaceState({}, "", "/");
+});
+
+describe("validEndpoint", () => {
+  test("names, addresses and bracketed IPv6 pass; a scheme, a space or a bad port do not", () => {
+    for (const host of ["192.168.1.9", "pc.example.ts.net", "[fe80::1]"]) {
+      expect(validEndpoint(ep(host, 8080)), host).toBe(true);
+    }
+    for (const host of ["", "http://192.168.1.9", "my pc", "a/b", "[nope"]) {
+      expect(validEndpoint(ep(host, 8080)), host).toBe(false);
+    }
+    for (const port of [0, 1.5, 70000, NaN]) expect(validEndpoint(ep("pc", port))).toBe(false);
+  });
+
+  test("an unusable address saved by an earlier build is not offered again", () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([
+      { endpoint: ep("my pc", 8080), label: "bad", lastConnected: 2 },
+      { endpoint: ep("192.168.1.9", 8080), label: "good", lastConnected: 1 },
+    ]));
+    expect(loadConnections().map((c) => c.label)).toEqual(["good"]);
+  });
 });
 
 describe("parseUrl", () => {

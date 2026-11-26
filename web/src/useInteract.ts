@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { ControlCmd, ViewTransform } from "./types";
 
 /** Below this much movement a press-release is a tap, not a drag. In CSS px, so it scales with the display. */
@@ -6,6 +6,18 @@ const DRAG_SLOP_PX = 6;
 
 /** Don't stream more move events than the server's frame cadence can show the result of (12 FPS). */
 const MOVE_INTERVAL_MS = 1000 / 12;
+
+/** How long a second finger has to land before movement starts a drag, so a pinch never presses a button. */
+export const PINCH_GRACE_MS = 100;
+
+/** The host releases a button it has heard nothing about for 30 s; a finger held still says it is there. */
+export const HOLD_REPEAT_MS = 10_000;
+
+/**
+ * A gesture shorter than this is a swipe, whose speed the target reads. Its release is put off by as long as
+ * its press was, since the host times a swipe from the one to the other.
+ */
+export const SWIPE_MS = 300;
 
 /**
  * Turns pointer gestures on the video canvas into Interact commands.
@@ -32,11 +44,61 @@ export function useInteract(
    * Where the gesture started: CSS px (for the drag-slop distance) and the screen coordinate that position
    * mapped to at the time, which is what a tap is sent at and where a drag presses down.
    */
-  const startRef = useRef<{ x: number; y: number; screen: { x: number; y: number } } | null>(null);
+  const startRef = useRef<{ x: number; y: number; at: number; screen: { x: number; y: number } } | null>(null);
   const draggingRef = useRef(false);
   const lastMoveRef = useRef(0);
   /** The last screen point a drag moved to, where {@link cancel} releases it. */
   const lastRef = useRef<{ x: number; y: number } | null>(null);
+  const holdRef = useRef<number | undefined>(undefined);
+  /** Starts the drag of a finger that left the slop within the grace and has not moved since. */
+  const graceRef = useRef<number | undefined>(undefined);
+  /** Where the finger last was, once outside the slop. */
+  const movedRef = useRef<{ x: number; y: number } | null>(null);
+  /** When the drag's `down` went. */
+  const pressedRef = useRef(0);
+  /** A swipe's release that is still being put off. */
+  const releaseRef = useRef<{ timer: number; now: () => void } | null>(null);
+
+  const stopHolding = useCallback(() => {
+    window.clearInterval(holdRef.current);
+    window.clearTimeout(graceRef.current);
+  }, []);
+
+  const press = useCallback(
+    (screen: { x: number; y: number }) => {
+      draggingRef.current = true;
+      pressedRef.current = Date.now();
+      send({ cmd: "input", kind: "down", x: screen.x, y: screen.y, button: 1 });
+      window.clearTimeout(graceRef.current);
+      window.clearInterval(holdRef.current);
+      holdRef.current = window.setInterval(() => {
+        const at = lastRef.current ?? screen;
+        send({ cmd: "input", kind: "move", x: at.x, y: at.y, button: 1 });
+      }, HOLD_REPEAT_MS);
+    },
+    [send],
+  );
+
+  const move = useCallback(
+    (p: { x: number; y: number }) => {
+      lastMoveRef.current = Date.now();
+      lastRef.current = p;
+      send({ cmd: "input", kind: "move", x: p.x, y: p.y, button: 1 });
+    },
+    [send],
+  );
+
+  // Disarmed or gone: the host lets the button go by itself, so only what this side remembers is dropped.
+  useEffect(
+    () => () => {
+      stopHolding();
+      window.clearTimeout(releaseRef.current?.timer);
+      releaseRef.current = null;
+      startRef.current = null;
+      draggingRef.current = false;
+    },
+    [enabled, stopHolding],
+  );
 
   /** Canvas pointer event → absolute screen coordinate, or null when nothing is being drawn. */
   const toScreen = useCallback(
@@ -62,11 +124,21 @@ export function useInteract(
       const p = toScreen(e);
       if (!p) return;
       e.currentTarget.setPointerCapture(e.pointerId);
-      startRef.current = { x: e.clientX, y: e.clientY, screen: p };
+      releaseRef.current?.now();
+      stopHolding();
+      startRef.current = { x: e.clientX, y: e.clientY, at: Date.now(), screen: p };
       draggingRef.current = false;
       lastRef.current = null;
+      movedRef.current = null;
+      graceRef.current = window.setTimeout(() => {
+        const start = startRef.current;
+        const at = movedRef.current;
+        if (!start || !at || draggingRef.current) return;
+        press(start.screen);
+        move(at);
+      }, PINCH_GRACE_MS);
     },
-    [enabled, toScreen],
+    [enabled, move, press, stopHolding, toScreen],
   );
 
   const onPointerMove = useCallback(
@@ -75,22 +147,19 @@ export function useInteract(
       if (!enabled || !start) return;
       const moved = Math.hypot(e.clientX - start.x, e.clientY - start.y);
       if (!draggingRef.current) {
-        if (moved < DRAG_SLOP_PX) return;
+        if (moved < DRAG_SLOP_PX && !movedRef.current) return;
+        movedRef.current = toScreen(e) ?? movedRef.current;
+        if (Date.now() - start.at < PINCH_GRACE_MS) return;
         // Promote to a drag: press at the point captured on pointerdown, so the drag starts where the finger
         // landed — and at the transform the user was actually looking at when they touched.
-        draggingRef.current = true;
-        send({ cmd: "input", kind: "down", x: start.screen.x, y: start.screen.y, button: 1 });
+        press(start.screen);
+      } else if (Date.now() - lastMoveRef.current < MOVE_INTERVAL_MS) {
+        return;
       }
-      const now = Date.now();
-      if (now - lastMoveRef.current < MOVE_INTERVAL_MS) return;
-      lastMoveRef.current = now;
       const p = toScreen(e);
-      if (p) {
-        lastRef.current = p;
-        send({ cmd: "input", kind: "move", x: p.x, y: p.y, button: 1 });
-      }
+      if (p) move(p);
     },
-    [enabled, send, toScreen],
+    [enabled, move, press, toScreen],
   );
 
   /**
@@ -100,32 +169,46 @@ export function useInteract(
   const cancel = useCallback(() => {
     const start = startRef.current;
     startRef.current = null;
+    stopHolding();
     if (start && draggingRef.current) {
       const p = lastRef.current ?? start.screen;
       send({ cmd: "input", kind: "up", x: p.x, y: p.y, button: 1 });
     }
     draggingRef.current = false;
     lastRef.current = null;
-  }, [send]);
+  }, [send, stopHolding]);
 
   const onPointerUp = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
       const start = startRef.current;
       startRef.current = null;
+      stopHolding();
       if (!enabled || !start) return;
       if (!draggingRef.current) {
-        // A tap goes to the down-position: within-slop drift is thumb roll, not aim (see the note above).
-        send({ cmd: "input", kind: "tap", x: start.screen.x, y: start.screen.y, button: 1 });
-        return;
+        if (Math.hypot(e.clientX - start.x, e.clientY - start.y) < DRAG_SLOP_PX) {
+          // A tap goes to the down-position: within-slop drift is thumb roll, not aim (see the note above).
+          send({ cmd: "input", kind: "tap", x: start.screen.x, y: start.screen.y, button: 1 });
+          return;
+        }
+        // A flick over before the drag was started: send it whole.
+        press(start.screen);
+        window.clearInterval(holdRef.current);
       }
       draggingRef.current = false;
       // A drag releases where the finger actually lifted, which is the whole point of a drag. If the transform
       // has gone (no frame left to map through), release at the press point anyway — a swallowed `up` leaves
       // the button held down on the host, which is worse than a release a few px off.
       const p = toScreen(e) ?? start.screen;
-      send({ cmd: "input", kind: "up", x: p.x, y: p.y, button: 1 });
+      const release = () => {
+        window.clearTimeout(releaseRef.current?.timer);
+        releaseRef.current = null;
+        send({ cmd: "input", kind: "up", x: p.x, y: p.y, button: 1 });
+      };
+      const late = Date.now() - start.at < SWIPE_MS ? pressedRef.current - start.at : 0;
+      if (late <= 0) release();
+      else releaseRef.current = { timer: window.setTimeout(release, late), now: release };
     },
-    [enabled, send, toScreen],
+    [enabled, press, send, stopHolding, toScreen],
   );
 
   const onWheel = useCallback(

@@ -133,7 +133,8 @@ export interface VideoStreamInfo {
   sh: number;
 }
 
-export type ConnStatus = "connecting" | "connected" | "reconnecting" | "closed";
+/** `rejected`: the host refuses the token. `invalid`: no socket can be opened to the address. Both are final. */
+export type ConnStatus = "connecting" | "connected" | "reconnecting" | "rejected" | "invalid" | "closed";
 
 /**
  * The letterbox transform the canvas is currently drawing with. Inverting it is what turns a touch on the

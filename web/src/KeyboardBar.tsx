@@ -14,11 +14,18 @@ export const SPECIAL_KEYS: Array<[label: string, key: string]> = [
 ];
 
 /**
- * The typing that goes over the wire for one change of the text field: everything that was added. The field
- * is emptied after each change, so what is in it is always new.
+ * What to send for the text field going from `before` to `after`: a Backspace for every character that went,
+ * then the text that came. A composing keyboard rewrites the word it is on at each keystroke, so the whole
+ * field is never new.
  */
-export function typed(value: string): ControlCmd | null {
-  return value.length > 0 ? { cmd: "input", kind: "text", text: value } : null;
+export function edits(before: string, after: string): ControlCmd[] {
+  const old = Array.from(before);
+  const now = Array.from(after);
+  let same = 0;
+  while (same < old.length && same < now.length && old[same] === now[same]) same++;
+  const commands: ControlCmd[] = old.slice(same).map(() => ({ cmd: "input", kind: "key", key: "BACKSPACE" }));
+  if (now.length > same) commands.push({ cmd: "input", kind: "text", text: now.slice(same).join("") });
+  return commands;
 }
 
 interface Props {
@@ -33,10 +40,18 @@ interface Props {
  */
 export function KeyboardBar({ send, onClose }: Props) {
   const field = useRef<HTMLInputElement>(null);
+  /** What of the field the host already has. */
+  const sent = useRef("");
 
   useEffect(() => {
     field.current?.focus();
   }, []);
+
+  // Emptying a field in the middle of a composition makes the keyboard commit the word again.
+  const empty = (input: HTMLInputElement) => {
+    input.value = "";
+    sent.current = "";
+  };
 
   return (
     <div className="keyboard-bar" onClick={(e) => e.stopPropagation()}>
@@ -50,11 +65,14 @@ export function KeyboardBar({ send, onClose }: Props) {
           autoComplete="off"
           spellCheck={false}
           onChange={(e) => {
-            const cmd = typed(e.currentTarget.value);
-            if (cmd) send(cmd);
-            e.currentTarget.value = "";
+            const value = e.currentTarget.value;
+            edits(sent.current, value).forEach(send);
+            sent.current = value;
+            if (!(e.nativeEvent as InputEvent).isComposing) empty(e.currentTarget);
           }}
+          onCompositionEnd={(e) => empty(e.currentTarget)}
           onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing) return;
             if (e.key === "Enter") {
               e.preventDefault();
               send({ cmd: "input", kind: "key", key: "ENTER" });
@@ -69,7 +87,21 @@ export function KeyboardBar({ send, onClose }: Props) {
       </div>
       <div className="keyboard-row keys">
         {SPECIAL_KEYS.map(([label, key]) => (
-          <button key={key} onClick={() => send({ cmd: "input", kind: "key", key })}>
+          <button
+            key={key}
+            // Taking focus from the field would put the phone's keyboard away.
+            onPointerDown={(e) => e.preventDefault()}
+            onClick={() => {
+              // The key changes the text under a word still being composed: end it, and start afresh.
+              const input = field.current;
+              if (input && input.value !== "") {
+                input.blur();
+                empty(input);
+                input.focus();
+              }
+              send({ cmd: "input", kind: "key", key });
+            }}
+          >
             {label}
           </button>
         ))}

@@ -112,6 +112,21 @@ export function useStageGestures(zoomRef: React.MutableRefObject<Zoom>, interact
     [interact, interacting, zoomRef],
   );
 
+  /** The system took the finger (a back swipe, a notification): never a tap, and a drag is let go. */
+  const onPointerCancel = useCallback(
+    (e: CanvasPointer) => {
+      if (!pointers.current.delete(e.pointerId)) return;
+      downAt.current = null;
+      if (pinchStart.current || settling.current) {
+        pinchStart.current = null;
+        settling.current = pointers.current.size > 0;
+        return;
+      }
+      if (interacting) interact.cancel();
+    },
+    [interact, interacting],
+  );
+
   const onWheel = useCallback(
     (e: React.WheelEvent<HTMLCanvasElement>) => {
       if (interacting) interact.onWheel(e);
@@ -119,5 +134,5 @@ export function useStageGestures(zoomRef: React.MutableRefObject<Zoom>, interact
     [interact, interacting],
   );
 
-  return { onPointerDown, onPointerMove, onPointerUp, onWheel };
+  return { onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onWheel };
 }

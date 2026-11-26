@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ConnStatus, ControlCmd, Endpoint, Frame, RunState, TelemetryEvent, TraceLine, VideoStreamInfo,
 } from "./types";
+import { wsUrl } from "./config";
 
 const OVERLAY_TTL_MS = 1200;
 
@@ -11,14 +12,17 @@ export const NOTICE_MS = 4000;
 /** How many trace lines the log drawer keeps; Studio replays its last 200 on connect. */
 export const TRACE_KEEP = 500;
 
+/** Silence after which a host that sends heartbeats is taken to be gone. It sends one every 5 s. */
+export const PING_TIMEOUT_MS = 15_000;
+
+/** The close code of a token the host does not accept: retrying with it can never work. */
+const BAD_TOKEN = 1008;
+
+const FIRST_BACKOFF_MS = 500;
+
 /** Binary tag bytes of an H.264 message. A JPEG frame carries no tag — see `handleBinary`. */
 const TAG_H264 = 2;
 const TAG_H264_KEY = 3;
-
-function wsUrl(ep: Endpoint): string {
-  const proto = ep.secure ? "wss" : "ws";
-  return `${proto}://${ep.host}:${ep.port}/ws?token=${encodeURIComponent(ep.token)}`;
-}
 
 /**
  * Whether this runtime has the WebCodecs decoder at all. It is a capability check, not a guarantee: a WebView
@@ -47,12 +51,20 @@ function canDecodeH264(): boolean {
  * renderer, the fit maths and the Interact coordinate mapping are identical either way. **Every** failure of
  * the video path — no `VideoDecoder`, a `configure` that throws, a decoder that errors mid-stream — hands back
  * to JPEG by telling the server this client no longer accepts H.264.
+ *
+ * ## When it gives up, and when it lets go
+ *
+ * A refused token (`rejected`) and an address no socket can be opened to (`invalid`) are final. A hidden app
+ * and a phone with no network close the socket and open a new one when they are back. The host does not resend
+ * an unchanged picture, so a quiet socket is not a dead one: only a missed heartbeat is.
  */
 export function usePilot(endpoint: Endpoint | null) {
   const [status, setStatus] = useState<ConnStatus>("closed");
   const [runState, setRunState] = useState<RunState>("stopped");
   // Whether the host can synthesize input without hijacking its real cursor (see PilotInputService).
   const [backgroundInput, setBackgroundInput] = useState(true);
+  // Why the host has no picture to send, or null while it has one.
+  const [reason, setReason] = useState<string | null>(null);
   // The run's trace, for the log drawer. State rather than a ref: a line is read by a person, not drawn at
   // 24 FPS, and the drawer has to re-render when one arrives.
   const [trace, setTrace] = useState<TraceLine[]>([]);
@@ -66,8 +78,6 @@ export function usePilot(endpoint: Endpoint | null) {
   const frameRef = useRef<Frame | null>(null);
   const overlaysRef = useRef<TelemetryEvent[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
-  const backoffRef = useRef(500);
-  const closedByUs = useRef(false);
 
   const send = useCallback((cmd: ControlCmd) => {
     const ws = wsRef.current;
@@ -76,13 +86,29 @@ export function usePilot(endpoint: Endpoint | null) {
 
   useEffect(() => {
     if (!endpoint) return;
-    closedByUs.current = false;
+    // Everything below is this endpoint's own, so a late event of the previous one cannot act on it.
+    let disposed = false;
+    let final = false;
+    let socket: WebSocket | null = null;
+    let backoff = FIRST_BACKOFF_MS;
     let reconnectTimer: number | undefined;
+    let watchdog: number | undefined;
+    let heardAt = 0;
+    /** JPEG decodes started, and the newest one no later picture may be older than. */
+    let decoding = 0;
+    let drawn = 0;
 
     /** The live decoder and the rect its pictures map to, or null while this connection is on JPEG. */
-    let video: { decoder: VideoDecoder; rect: Omit<VideoStreamInfo, "codec"> } | null = null;
+    let video: { decoder: VideoDecoder; rect: Omit<VideoStreamInfo, "codec">; keyed: boolean } | null = null;
     /** A monotonic microsecond stamp. The decoder requires one and passes it through; nothing here reads it. */
     let stamp = 0;
+
+    setStatus("connecting");
+    setRunState("stopped");
+    setBackgroundInput(true);
+    setReason(null);
+    setNotice(null);
+    runRef.current = "stopped";
 
     const publish = (bitmap: Frame["bitmap"], rect: Omit<VideoStreamInfo, "codec">) => {
       const prev = frameRef.current;
@@ -90,6 +116,14 @@ export function usePilot(endpoint: Endpoint | null) {
       // Release the previous picture only once its replacement is in place: a VideoFrame left unclosed
       // stalls the decoder within a few frames, and one closed early is drawn as a blank.
       if (prev) prev.bitmap.close();
+    };
+
+    /** Takes the picture off the screen, including one still being decoded. */
+    const blank = () => {
+      drawn = decoding;
+      frameRef.current?.bitmap.close();
+      frameRef.current = null;
+      overlaysRef.current = [];
     };
 
     const stopVideo = () => {
@@ -114,6 +148,7 @@ export function usePilot(endpoint: Endpoint | null) {
 
     const startVideo = (ws: WebSocket, info: VideoStreamInfo) => {
       stopVideo();
+      drawn = decoding;   // a JPEG still being decoded is older than anything this stream will draw
       const rect = { sx: info.sx, sy: info.sy, sw: info.sw, sh: info.sh };
       try {
         const decoder = new VideoDecoder({
@@ -121,7 +156,7 @@ export function usePilot(endpoint: Endpoint | null) {
           error: () => fallBackToJpeg(ws),
         });
         decoder.configure({ codec: info.codec, optimizeForLatency: true });
-        video = { decoder, rect };
+        video = { decoder, rect, keyed: false };
       } catch {
         // The runtime has VideoDecoder but cannot decode this profile. Nothing is broken yet — the server
         // has simply been sending a format this phone can't read, and telling it so restores the picture.
@@ -129,15 +164,45 @@ export function usePilot(endpoint: Endpoint | null) {
       }
     };
 
+    /** Lets go of the socket, if any: nothing it still has to say is heard. */
+    const release = () => {
+      window.clearTimeout(reconnectTimer);
+      window.clearInterval(watchdog);
+      watchdog = undefined;
+      const old = socket;
+      socket = null;
+      wsRef.current = null;
+      stopVideo();   // a decoder outliving its socket would decode into a frame nothing draws
+      setReason(null);
+      if (!old) return;
+      old.onopen = old.onclose = old.onerror = old.onmessage = null;
+      old.close();
+    };
+
+    const retry = () => {
+      setStatus("reconnecting");
+      reconnectTimer = window.setTimeout(connect, backoff);
+      backoff = Math.min(backoff * 2, 8000);
+    };
+
     const connect = () => {
-      setStatus((s) => (s === "closed" ? "connecting" : "reconnecting"));
-      const ws = new WebSocket(wsUrl(endpoint));
+      if (disposed || final || socket || document.visibilityState === "hidden") return;
+      window.clearTimeout(reconnectTimer);
+      let ws: WebSocket;
+      try {
+        ws = new WebSocket(wsUrl(endpoint));
+      } catch {
+        final = true;
+        setStatus("invalid");
+        return;
+      }
       ws.binaryType = "arraybuffer";
+      socket = ws;
       wsRef.current = ws;
 
       ws.onopen = () => {
         setStatus("connected");
-        backoffRef.current = 500;
+        backoff = FIRST_BACKOFF_MS;
         // Studio replays the run's recent trace on every connect, so what was held before would arrive twice.
         setTrace([]);
         // Before anything else on the socket: what this client can decode. A server that predates this
@@ -145,22 +210,31 @@ export function usePilot(endpoint: Endpoint | null) {
         // version number.
         ws.send(JSON.stringify({ cmd: "hello", accept: canDecodeH264() ? ["h264"] : [] }));
       };
-      ws.onclose = () => {
-        wsRef.current = null;
-        stopVideo();   // a decoder outliving its socket would decode into a frame nothing draws
-        if (closedByUs.current) {
-          setStatus("closed");
+      ws.onclose = (ev) => {
+        release();
+        if (ev?.code === BAD_TOKEN) {
+          final = true;
+          setStatus("rejected");
           return;
         }
-        setStatus("reconnecting");
-        reconnectTimer = window.setTimeout(connect, backoffRef.current);
-        backoffRef.current = Math.min(backoffRef.current * 2, 8000);
+        retry();
       };
       ws.onerror = () => ws.close();
       ws.onmessage = (ev) => {
+        heardAt = Date.now();
         if (typeof ev.data === "string") handleText(ws, ev.data);
         else handleBinary(ws, ev.data as ArrayBuffer);
       };
+    };
+
+    /** Only a host that has sent one heartbeat is expected to send more; an older SDK sends none. */
+    const watchForSilence = () => {
+      if (watchdog !== undefined) return;
+      watchdog = window.setInterval(() => {
+        if (Date.now() - heardAt < PING_TIMEOUT_MS) return;
+        release();
+        retry();
+      }, 1000);
     };
 
     const handleText = (ws: WebSocket, text: string) => {
@@ -168,6 +242,7 @@ export function usePilot(endpoint: Endpoint | null) {
         type?: string;
         run?: RunState;
         backgroundInput?: boolean;
+        reason?: string;
         event?: TelemetryEvent;
         line?: TraceLine;
         codec?: string | null;
@@ -188,7 +263,12 @@ export function usePilot(endpoint: Endpoint | null) {
           setRunState(msg.run);
         }
         if (typeof msg.backgroundInput === "boolean") setBackgroundInput(msg.backgroundInput);
+        // Every state carries the reason while there is one, so its absence means the picture is back.
+        const why = typeof msg.reason === "string" && msg.reason ? msg.reason : null;
+        setReason(why);
+        if (why) blank();
       }
+      else if (msg.type === "ping") watchForSilence();
       else if (msg.type === "video") {
         if (!msg.codec) stopVideo();
         else startVideo(ws, { codec: msg.codec, sx: msg.sx ?? 0, sy: msg.sy ?? 0, sw: msg.sw ?? 0, sh: msg.sh ?? 0 });
@@ -225,6 +305,9 @@ export function usePilot(endpoint: Endpoint | null) {
       if (video) {
         const tag = new Uint8Array(buf, 0, 1)[0];
         if (tag !== TAG_H264 && tag !== TAG_H264_KEY) return;
+        // A delta means nothing to a decoder that has not had its keyframe, and would only make it fail.
+        if (tag === TAG_H264_KEY) video.keyed = true;
+        else if (!video.keyed) return;
         try {
           video.decoder.decode(new EncodedVideoChunk({
             type: tag === TAG_H264_KEY ? "key" : "delta",
@@ -238,25 +321,50 @@ export function usePilot(endpoint: Endpoint | null) {
       }
       const dv = new DataView(buf);
       const sx = dv.getInt32(0), sy = dv.getInt32(4), sw = dv.getInt32(8), sh = dv.getInt32(12);
-      // createImageBitmap decodes off the main thread; publish() closes the previous picture.
+      const order = ++decoding;
+      // createImageBitmap decodes off the main thread, and need not finish in the order it was asked.
       createImageBitmap(new Blob([buf.slice(16)], { type: "image/jpeg" }))
-        .then((bitmap) => publish(bitmap, { sx, sy, sw, sh }))
+        .then((bitmap) => {
+          if (disposed || order <= drawn) {
+            bitmap.close();
+            return;
+          }
+          drawn = order;
+          publish(bitmap, { sx, sy, sw, sh });
+        })
         .catch(() => {});
     };
 
+    const suspend = () => {
+      if (final) return;
+      release();
+      setStatus("reconnecting");
+    };
+    const resume = () => {
+      backoff = FIRST_BACKOFF_MS;
+      connect();
+    };
+    const onVisibility = () => (document.visibilityState === "hidden" ? suspend() : resume());
+    // The network that came back is not the one the old socket was opened on.
+    const onOnline = () => {
+      suspend();
+      resume();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", suspend);
+
     connect();
     return () => {
-      closedByUs.current = true;
-      if (reconnectTimer) window.clearTimeout(reconnectTimer);
-      stopVideo();
-      wsRef.current?.close();
-      wsRef.current = null;
-      frameRef.current?.bitmap.close();
-      frameRef.current = null;
-      overlaysRef.current = [];
+      disposed = true;
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", suspend);
+      release();
+      blank();
+      setStatus("closed");
       setTrace([]);
       setInputKinds([]);
-      runRef.current = "stopped";
     };
   }, [endpoint]);
 
@@ -269,6 +377,7 @@ export function usePilot(endpoint: Endpoint | null) {
   const clearTrace = useCallback(() => setTrace([]), []);
 
   return {
-    status, runState, backgroundInput, frameRef, overlaysRef, trace, clearTrace, send, inputKinds, notice,
+    status, runState, backgroundInput, reason, frameRef, overlaysRef, trace, clearTrace, send, inputKinds,
+    notice,
   };
 }

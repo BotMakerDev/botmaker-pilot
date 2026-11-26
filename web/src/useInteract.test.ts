@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { useInteract } from "./useInteract";
+import { HOLD_REPEAT_MS, PINCH_GRACE_MS, SWIPE_MS, useInteract } from "./useInteract";
 import type { ControlCmd, InputCmd, ViewTransform } from "./types";
 
 /**
@@ -61,6 +61,14 @@ function harness(enabled = true, transform: ViewTransform | null = TRANSFORM): H
 /** A pointer event with only the fields the hook reads. */
 function pointer(h: Harness, x: number, y: number) {
   return { clientX: x, clientY: y, pointerId: 7, currentTarget: h.canvas } as never;
+}
+
+/** A press that landed long enough ago for movement to start a drag. */
+function press(h: Harness, x: number, y: number) {
+  const now = Date.now();
+  const clock = vi.spyOn(Date, "now").mockReturnValue(now - SWIPE_MS);
+  h.handlers.onPointerDown(pointer(h, x, y));
+  clock.mockRestore();
 }
 
 function wheel(h: Harness, x: number, y: number, deltaY: number) {
@@ -149,7 +157,7 @@ describe("tap versus drag", () => {
 
   test("drift at exactly the slop is a drag, not a tap", () => {
     const h = harness();
-    h.handlers.onPointerDown(pointer(h, 110, 105));
+    press(h, 110, 105);
     h.handlers.onPointerMove(pointer(h, 116, 105)); // exactly 6 — the guard is `moved < 6`
     h.handlers.onPointerUp(pointer(h, 116, 105));
     expect(inputs(h).map((c) => c.kind)).toEqual(["down", "move", "up"]);
@@ -157,7 +165,7 @@ describe("tap versus drag", () => {
 
   test("a drag presses at the point the finger landed and releases where it lifted", () => {
     const h = harness();
-    h.handlers.onPointerDown(pointer(h, 110, 105));
+    press(h, 110, 105);
     h.handlers.onPointerMove(pointer(h, 200, 105));
     h.handlers.onPointerUp(pointer(h, 300, 105));
     const [down, , up] = inputs(h);
@@ -193,13 +201,60 @@ describe("tap versus drag", () => {
     vi.setSystemTime(1_000_000);
     const h = harness();
     h.handlers.onPointerDown(pointer(h, 110, 105));
+    vi.setSystemTime(1_000_000 + PINCH_GRACE_MS);
     h.handlers.onPointerMove(pointer(h, 200, 105));
     h.handlers.onPointerMove(pointer(h, 210, 105));
     h.handlers.onPointerMove(pointer(h, 220, 105));
     expect(inputs(h).map((c) => c.kind)).toEqual(["down", "move"]);
-    vi.setSystemTime(1_000_000 + 100); // > 1000/12 ms
+    vi.setSystemTime(1_000_000 + PINCH_GRACE_MS + 100); // > 1000/12 ms
     h.handlers.onPointerMove(pointer(h, 230, 105));
     expect(inputs(h).map((c) => c.kind)).toEqual(["down", "move", "move"]);
+  });
+
+  test("movement just after the press presses nothing yet, so a pinch can still take it", () => {
+    const h = harness();
+    h.handlers.onPointerDown(pointer(h, 110, 105));
+    h.handlers.onPointerMove(pointer(h, 200, 105));
+    h.handlers.cancel();
+    expect(h.sent).toEqual([]);
+  });
+
+  test("a flick over before the drag started is sent as a drag that lasts as long", () => {
+    vi.useFakeTimers();
+    const h = harness();
+    h.handlers.onPointerDown(pointer(h, 110, 105));
+    vi.advanceTimersByTime(60);
+    h.handlers.onPointerUp(pointer(h, 300, 105));
+    vi.advanceTimersByTime(59);
+    expect(inputs(h).map((c) => c.kind)).toEqual(["down"]);
+    vi.advanceTimersByTime(1);
+    expect(inputs(h).map((c) => c.kind)).toEqual(["down", "up"]);
+  });
+
+  test("a finger that moved at once and then holds still starts its drag when the grace ends", () => {
+    vi.useFakeTimers();
+    const h = harness();
+    h.handlers.onPointerDown(pointer(h, 110, 105));
+    h.handlers.onPointerMove(pointer(h, 200, 105));
+    expect(h.sent).toEqual([]);
+    vi.advanceTimersByTime(PINCH_GRACE_MS);
+    expect(inputs(h).map((c) => c.kind)).toEqual(["down", "move"]);
+    expect(inputs(h)[1]).toMatchObject(expectedScreen(200, 105, 2));
+  });
+
+  test("a finger held still keeps telling the host, until it lifts", () => {
+    vi.useFakeTimers();
+    const h = harness();
+    press(h, 110, 105);
+    h.handlers.onPointerMove(pointer(h, 300, 105));
+    h.sent.length = 0;
+    vi.advanceTimersByTime(2 * HOLD_REPEAT_MS);
+    expect(inputs(h).map((c) => c.kind)).toEqual(["move", "move"]);
+    expect(inputs(h)[0]).toMatchObject(expectedScreen(300, 105, 2));
+    h.handlers.onPointerUp(pointer(h, 300, 105));
+    h.sent.length = 0;
+    vi.advanceTimersByTime(HOLD_REPEAT_MS);
+    expect(h.sent).toEqual([]);
   });
 });
 
@@ -218,7 +273,7 @@ describe("a drag that loses its frame", () => {
 
   test("a move that loses its frame sends nothing but keeps the drag alive", () => {
     const h = harness();
-    h.handlers.onPointerDown(pointer(h, 110, 105));
+    press(h, 110, 105);
     h.handlers.onPointerMove(pointer(h, 300, 105));
     h.transformRef.current = null;
     h.handlers.onPointerMove(pointer(h, 400, 105));
@@ -268,9 +323,8 @@ describe("a second finger (a pinch) cancels the gesture", () => {
   });
 
   test("a drag is released where it last moved, never left held", () => {
-    vi.spyOn(Date, "now").mockReturnValue(1_000_000);
     const h = harness();
-    h.handlers.onPointerDown(pointer(h, 110, 105));
+    press(h, 110, 105);
     h.handlers.onPointerMove(pointer(h, 300, 105));
     h.handlers.cancel();
     const sent = inputs(h);
@@ -278,7 +332,6 @@ describe("a second finger (a pinch) cancels the gesture", () => {
     expect(sent[2]).toMatchObject({ x: sent[1].x, y: sent[1].y });
     h.handlers.onPointerUp(pointer(h, 300, 105));
     expect(inputs(h)).toHaveLength(3);
-    vi.restoreAllMocks();
   });
 });
 
