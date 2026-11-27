@@ -10,6 +10,10 @@ Release only.
 
 ### Added
 
+- The wire carries a list of the PC's live runs (`runs`), a `select` command and a `runId` on state, video, trace and
+  notice (pilot in core phase 4a). `usePilot` holds `runs` and `shownRun`; the screen that picks a run comes with the
+  phone redesign.
+
 - The release attaches `web.zip`, the page the SDK serves to a browser.
 - The screen stays on while connected.
 - Android's Back closes the keyboard, then the log, then the connection, instead of leaving the app.

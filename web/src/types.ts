@@ -87,12 +87,30 @@ export interface InputCmd {
  * passive viewer can never poke the game.
  */
 export type ControlCmd =
-  | { cmd: "start" | "stop" | "pause" | "resume" }
+  | { cmd: "start" | "stop" | "pause" | "resume"; run?: string }
+  | SelectCmd
   | { cmd: "interact"; on: boolean }
   | HelloCmd
   | InputCmd
   | KeyCmd
   | TextCmd;
+
+/**
+ * This phone picking, for itself alone, which listed run it is shown. No `run`: the host's default (the run its open
+ * project holds, else the first listed).
+ */
+export interface SelectCmd {
+  cmd: "select";
+  run?: string;
+}
+
+/** One live run of the host's list. `id` is the host's own and means nothing to the phone but to send it back. */
+export interface RunEntry {
+  id: string;
+  bot: string;
+  state: RunState;
+  startedMillis: number;
+}
 
 /**
  * One key press, by the SDK's `Key` constant name (`ENTER`, `ESCAPE`, `UP`…). No coordinates: it goes to

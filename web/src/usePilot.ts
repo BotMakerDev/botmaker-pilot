@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
-  ConnStatus, ControlCmd, Endpoint, Frame, RunState, TelemetryEvent, TraceLine, VideoStreamInfo,
+  ConnStatus, ControlCmd, Endpoint, Frame, RunEntry, RunState, TelemetryEvent, TraceLine, VideoStreamInfo,
 } from "./types";
 import { wsUrl } from "./config";
 
@@ -73,6 +73,10 @@ export function usePilot(endpoint: Endpoint | null) {
   const [inputKinds, setInputKinds] = useState<string[]>([]);
   // The host's last one-sentence notice (why a key was not sent), cleared after NOTICE_MS.
   const [notice, setNotice] = useState<string | null>(null);
+  // The host's live runs and the one this phone is shown. Empty and null from a host that predates the list, and
+  // from one with no run to show; the phone then behaves as it always did.
+  const [runs, setRuns] = useState<RunEntry[]>([]);
+  const [shownRun, setShownRun] = useState<string | null>(null);
   const runRef = useRef<RunState>("stopped");
 
   const frameRef = useRef<Frame | null>(null);
@@ -108,6 +112,8 @@ export function usePilot(endpoint: Endpoint | null) {
     setBackgroundInput(true);
     setReason(null);
     setNotice(null);
+    setRuns([]);
+    setShownRun(null);
     runRef.current = "stopped";
 
     const publish = (bitmap: Frame["bitmap"], rect: Omit<VideoStreamInfo, "codec">) => {
@@ -249,6 +255,8 @@ export function usePilot(endpoint: Endpoint | null) {
         sx?: number; sy?: number; sw?: number; sh?: number;
         kinds?: string[];
         text?: string;
+        selected?: string | null;
+        runs?: RunEntry[];
       };
       try {
         msg = JSON.parse(text);
@@ -267,6 +275,10 @@ export function usePilot(endpoint: Endpoint | null) {
         const why = typeof msg.reason === "string" && msg.reason ? msg.reason : null;
         setReason(why);
         if (why) blank();
+      }
+      else if (msg.type === "runs" && Array.isArray(msg.runs)) {
+        setRuns(msg.runs);
+        setShownRun(typeof msg.selected === "string" ? msg.selected : null);
       }
       else if (msg.type === "ping") watchForSilence();
       else if (msg.type === "video") {
@@ -378,6 +390,6 @@ export function usePilot(endpoint: Endpoint | null) {
 
   return {
     status, runState, backgroundInput, reason, frameRef, overlaysRef, trace, clearTrace, send, inputKinds,
-    notice,
+    notice, runs, shownRun,
   };
 }

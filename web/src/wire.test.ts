@@ -26,7 +26,7 @@ import type { Endpoint, TelemetryEvent, TraceLine } from "./types";
 const GOLDEN_PATH = join(process.cwd(), "src", "wire-golden.json");
 
 /** Update together with `GOLDEN_SHA256` in the Studio repo's `TelemetryWireContractTest`. */
-const GOLDEN_SHA256 = "0b751c506853a217a49ac73b19cefc89f1293f728943f67325c3cfcc4750874c";
+const GOLDEN_SHA256 = "76bf3c288899fd5c84f3a3504f132ced6ad53b5adc847c811545a331690e7cf6";
 
 const CORPUS = JSON.parse(readFileSync(GOLDEN_PATH, "utf8")) as Record<string, Record<string, unknown>>;
 
@@ -93,6 +93,8 @@ interface Decoded {
   inputKinds: string[];
   notice: string | null;
   reason: string | null;
+  runs: Api["runs"];
+  shownRun: string | null;
 }
 
 /**
@@ -117,6 +119,8 @@ function deliver(caseName: string): Decoded {
     inputKinds: [...api.inputKinds],
     notice: api.notice,
     reason: api.reason,
+    runs: [...api.runs],
+    shownRun: api.shownRun,
   };
   h.unmount();
   covered.add(caseName);
@@ -292,6 +296,31 @@ describe("what the client makes of a state message", () => {
     expect(api.reason).toBe(CORPUS["state.stopped.reason"].reason);
   });
 
+  test("a state names its run without disturbing what it says", () => {
+    const api = deliver("state.running.run");
+    expect(api.runState).toBe("running");
+    expect(api.reason).toBeNull();
+  });
+
+  test("a run with no view yet is running, with the reason nothing shows", () => {
+    const api = deliver("state.noview.run");
+    expect(api.runState).toBe("running");
+    expect(api.backgroundInput).toBe(false);
+    expect(api.reason).toBe("no view of this run yet");
+  });
+
+  test("the list of runs is held with the one this phone is shown", () => {
+    const api = deliver("runs.list");
+    expect(api.runs.map((r) => r.id)).toEqual(CORPUS["runs.list"].runs.map((r: { id: string }) => r.id));
+    expect(api.shownRun).toBe("20261127-101500-a1b2");
+  });
+
+  test("no runs means nothing is shown by id, as with a host that never sends the list", () => {
+    const api = deliver("runs.none");
+    expect(api.runs).toEqual([]);
+    expect(api.shownRun).toBeNull();
+  });
+
   test("a heartbeat changes nothing a person sees", () => {
     const api = deliver("ping");
     expect(api.notice).toBeNull();
@@ -349,6 +378,11 @@ describe("what the client makes of a video message", () => {
     // If this key set ever shrinks, the client has nothing left to map a tap through.
     expect(Object.keys(CORPUS["video.started"]).sort())
       .toEqual(["codec", "sh", "sw", "sx", "sy", "type"]);
+  });
+
+  test("a stream names its run and is configured all the same", () => {
+    deliver("video.started.run");
+    expect(StubVideoDecoder.last?.configured?.codec).toBe(CORPUS["video.started.run"].codec);
   });
 
   test("a stop message builds no decoder and is not mistaken for a codec", () => {
