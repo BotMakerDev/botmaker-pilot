@@ -10,6 +10,8 @@ Release only.
 
 ### Added
 
+- The golden wire file gained the host's `thumb` message and an `instance` on each `runs` entry (pilot in core phase
+  6a); the app ignores `thumb` until its overview (phase 6b) draws it.
 - The wire carries a list of the PC's live runs (`runs`), a `select` command and a `runId` on state, video, trace and
   notice (pilot in core phase 4a). `usePilot` holds `runs` and `shownRun`; the screen that picks a run comes with the
   phone redesign.

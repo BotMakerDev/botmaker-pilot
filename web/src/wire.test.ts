@@ -26,7 +26,7 @@ import type { Endpoint, TelemetryEvent, TraceLine } from "./types";
 const GOLDEN_PATH = join(process.cwd(), "src", "wire-golden.json");
 
 /** Update together with `GOLDEN_SHA256` in the Studio repo's `TelemetryWireContractTest`. */
-const GOLDEN_SHA256 = "76bf3c288899fd5c84f3a3504f132ced6ad53b5adc847c811545a331690e7cf6";
+const GOLDEN_SHA256 = "082991fdd1cedc38faeb75d6ab14c17656e1f16e5fe6226264da5b91e66daeac";
 
 const CORPUS = JSON.parse(readFileSync(GOLDEN_PATH, "utf8")) as Record<string, Record<string, unknown>>;
 
@@ -319,6 +319,12 @@ describe("what the client makes of a state message", () => {
     const api = deliver("runs.none");
     expect(api.runs).toEqual([]);
     expect(api.shownRun).toBeNull();
+  });
+
+  test("a thumbnail is ignored until the overview draws it (phase 6b)", () => {
+    const api = deliver("thumb");
+    expect(api.notice).toBeNull();
+    expect(api.overlays).toHaveLength(0);
   });
 
   test("a heartbeat changes nothing a person sees", () => {
