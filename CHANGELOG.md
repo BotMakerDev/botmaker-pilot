@@ -10,11 +10,13 @@ Release only.
 
 ### Added
 
-- The golden wire file gained the host's `thumb` message and an `instance` on each `runs` entry (pilot in core phase
-  6a); the app ignores `thumb` until its overview (phase 6b) draws it.
-- The wire carries a list of the PC's live runs (`runs`), a `select` command and a `runId` on state, video, trace and
-  notice (pilot in core phase 4a). `usePilot` holds `runs` and `shownRun`; the screen that picks a run comes with the
-  phone redesign.
+- A new screen: the run's state, reason and name on top, three buttons below (Start or Stop, Pause or Resume,
+  Touch), and the rest in a `⋯` menu. In landscape the buttons are a rail beside the picture.
+- Several runs at once: swipe the top line to move between the runs of one bot, or open "▦ N runs" to see every run,
+  grouped by bot, with a small live picture of each. The golden wire file gained the host's `thumb` message and an
+  `instance` on each `runs` entry for it.
+- A red mark stays on the picture while touches control the PC.
+- A light theme, following the phone.
 
 - The release attaches `web.zip`, the page the SDK serves to a browser.
 - The screen stays on while connected.

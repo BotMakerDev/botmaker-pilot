@@ -95,6 +95,7 @@ interface Decoded {
   reason: string | null;
   runs: Api["runs"];
   shownRun: string | null;
+  thumbs: Record<string, string>;
 }
 
 /**
@@ -121,6 +122,7 @@ function deliver(caseName: string): Decoded {
     reason: api.reason,
     runs: [...api.runs],
     shownRun: api.shownRun,
+    thumbs: { ...api.thumbs },
   };
   h.unmount();
   covered.add(caseName);
@@ -311,7 +313,7 @@ describe("what the client makes of a state message", () => {
 
   test("the list of runs is held with the one this phone is shown", () => {
     const api = deliver("runs.list");
-    expect(api.runs.map((r) => r.id)).toEqual(CORPUS["runs.list"].runs.map((r: { id: string }) => r.id));
+    expect(api.runs.map((r) => r.id)).toEqual((CORPUS["runs.list"].runs as { id: string }[]).map((r) => r.id));
     expect(api.shownRun).toBe("20261127-101500-a1b2");
   });
 
@@ -321,8 +323,9 @@ describe("what the client makes of a state message", () => {
     expect(api.shownRun).toBeNull();
   });
 
-  test("a thumbnail is ignored until the overview draws it (phase 6b)", () => {
+  test("a thumbnail is held as a picture of its run", () => {
     const api = deliver("thumb");
+    expect(api.thumbs).toEqual({ "20261127-101500-a1b2": "data:image/jpeg;base64,/9j/4AAQ" });
     expect(api.notice).toBeNull();
     expect(api.overlays).toHaveLength(0);
   });

@@ -89,7 +89,9 @@ export interface InputCmd {
 export type ControlCmd =
   | { cmd: "start" | "stop" | "pause" | "resume"; run?: string }
   | SelectCmd
-  | { cmd: "interact"; on: boolean }
+  /** Whether this phone is showing every run at once; the host sends `thumb` messages only while it is. */
+  | { cmd: "overview"; on: boolean }
+  | { cmd: "interact"; on: boolean; run?: string }
   | HelloCmd
   | InputCmd
   | KeyCmd
@@ -108,6 +110,8 @@ export interface SelectCmd {
 export interface RunEntry {
   id: string;
   bot: string;
+  /** Which instance of the bot; "" or absent when the host has no name to give. */
+  instance?: string;
   state: RunState;
   startedMillis: number;
 }

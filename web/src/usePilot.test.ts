@@ -623,6 +623,74 @@ describe("the H.264 stream", () => {
   });
 });
 
+describe("several runs", () => {
+  const runs = (selected: string | null, ...ids: string[]) => JSON.stringify({
+    type: "runs",
+    selected,
+    runs: ids.map((id) => ({ id, bot: "Farm", instance: "", state: "running", startedMillis: 0 })),
+  });
+  const line = JSON.stringify({ type: "trace", line: { ts: 0, level: "info", source: "Bot", text: "x", count: 1 } });
+  const thumb = (runId: string) => JSON.stringify({ type: "thumb", runId, jpeg: "QQ==" });
+
+  test("a picked run takes the other's log off the screen once the host shows it", () => {
+    const h = harness();
+    act(() => {
+      h.socket().open();
+      h.socket().deliver(runs("a", "a", "b"));
+      h.socket().deliver(line);
+      h.api().pick("b");
+      h.socket().deliver(runs("a", "a", "b")); // the list, read again before the pick was heard
+    });
+    expect(h.socket().sent).toContain(JSON.stringify({ cmd: "select", run: "b" }));
+    expect(h.api().trace).toHaveLength(1);
+
+    act(() => h.socket().deliver(runs("b", "a", "b")));
+    expect(h.api().shownRun).toBe("b");
+    expect(h.api().trace).toHaveLength(0);
+    h.unmount();
+  });
+
+  test("a change the host makes by itself keeps the log, as when the run shown ends", () => {
+    const h = harness();
+    act(() => {
+      h.socket().open();
+      h.socket().deliver(runs("a", "a"));
+      h.socket().deliver(line);
+      h.socket().deliver(runs(null));
+    });
+    expect(h.api().trace).toHaveLength(1);
+    h.unmount();
+  });
+
+  test("a run the host shows in another's place starts with an empty log", () => {
+    const h = harness();
+    act(() => {
+      h.socket().open();
+      h.socket().deliver(runs("a", "a", "b"));
+      h.socket().deliver(line);
+      h.socket().deliver(runs("b", "b"));
+    });
+    expect(h.api().trace).toHaveLength(0);
+    h.unmount();
+  });
+
+  test("a thumbnail goes with its run and with the connection", () => {
+    const h = harness();
+    act(() => {
+      h.socket().open();
+      h.socket().deliver(runs("a", "a", "b"));
+      h.socket().deliver(thumb("a"));
+      h.socket().deliver(thumb("b"));
+      h.socket().deliver(runs("a", "a"));
+    });
+    expect(Object.keys(h.api().thumbs)).toEqual(["a"]);
+
+    act(() => h.socket().close(1006));
+    expect(h.api().thumbs).toEqual({});
+    h.unmount();
+  });
+});
+
 describe("the trace", () => {
   const line = (text: string) => JSON.stringify({
     type: "trace", line: { ts: 0, level: "info", source: "Bot", text, count: 1 },

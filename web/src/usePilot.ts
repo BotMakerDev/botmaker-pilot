@@ -77,6 +77,11 @@ export function usePilot(endpoint: Endpoint | null) {
   // from one with no run to show; the phone then behaves as it always did.
   const [runs, setRuns] = useState<RunEntry[]>([]);
   const [shownRun, setShownRun] = useState<string | null>(null);
+  // The overview's small pictures by run id, as image URLs.
+  const [thumbs, setThumbs] = useState<Record<string, string>>({});
+  const shownRef = useRef<string | null>(null);
+  /** The run the user asked for and the host has not answered with yet. */
+  const pickedRef = useRef<string | null>(null);
   const runRef = useRef<RunState>("stopped");
 
   const frameRef = useRef<Frame | null>(null);
@@ -87,6 +92,17 @@ export function usePilot(endpoint: Endpoint | null) {
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(cmd));
   }, []);
+
+  /** Asks the host to show this phone, and only this phone, another run. */
+  const pick = useCallback(
+    (run: string) => {
+      pickedRef.current = run;
+      send({ cmd: "select", run });
+    },
+    [send],
+  );
+
+  const clearThumbs = useCallback(() => setThumbs({}), []);
 
   useEffect(() => {
     if (!endpoint) return;
@@ -114,6 +130,9 @@ export function usePilot(endpoint: Endpoint | null) {
     setNotice(null);
     setRuns([]);
     setShownRun(null);
+    setThumbs({});
+    shownRef.current = null;
+    pickedRef.current = null;
     runRef.current = "stopped";
 
     const publish = (bitmap: Frame["bitmap"], rect: Omit<VideoStreamInfo, "codec">) => {
@@ -180,6 +199,8 @@ export function usePilot(endpoint: Endpoint | null) {
       wsRef.current = null;
       stopVideo();   // a decoder outliving its socket would decode into a frame nothing draws
       setReason(null);
+      setThumbs({});
+      pickedRef.current = null;
       if (!old) return;
       old.onopen = old.onclose = old.onerror = old.onmessage = null;
       old.close();
@@ -257,6 +278,8 @@ export function usePilot(endpoint: Endpoint | null) {
         text?: string;
         selected?: string | null;
         runs?: RunEntry[];
+        runId?: string;
+        jpeg?: string;
       };
       try {
         msg = JSON.parse(text);
@@ -277,8 +300,27 @@ export function usePilot(endpoint: Endpoint | null) {
         if (why) blank();
       }
       else if (msg.type === "runs" && Array.isArray(msg.runs)) {
-        setRuns(msg.runs);
-        setShownRun(typeof msg.selected === "string" ? msg.selected : null);
+        const listed = msg.runs;
+        const selected = typeof msg.selected === "string" ? msg.selected : null;
+        // Another run is shown, by the user's pick or by the host: what is on screen and in the log is the other
+        // run's. A run that only ended (none shown now) keeps its log, to be read.
+        const picked = selected !== null && selected === pickedRef.current;
+        if (picked) pickedRef.current = null;
+        const before = shownRef.current;
+        if (selected !== null && selected !== before && (before !== null || picked)) {
+          blank();
+          setTrace([]);
+        }
+        shownRef.current = selected;
+        setRuns(listed);
+        setShownRun(selected);
+        setThumbs((held) => Object.fromEntries(
+          Object.entries(held).filter(([id]) => listed.some((run) => run.id === id))));
+      }
+      else if (msg.type === "thumb" && typeof msg.runId === "string" && typeof msg.jpeg === "string") {
+        const id = msg.runId;
+        const url = `data:image/jpeg;base64,${msg.jpeg}`;
+        setThumbs((held) => ({ ...held, [id]: url }));
       }
       else if (msg.type === "ping") watchForSilence();
       else if (msg.type === "video") {
@@ -390,6 +432,6 @@ export function usePilot(endpoint: Endpoint | null) {
 
   return {
     status, runState, backgroundInput, reason, frameRef, overlaysRef, trace, clearTrace, send, inputKinds,
-    notice, runs, shownRun,
+    notice, runs, shownRun, pick, thumbs, clearThumbs,
   };
 }

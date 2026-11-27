@@ -6,6 +6,37 @@
   --text: #e8eaed;
   --muted: #8b93a1;
   --accent: #2f6fed;
+  --button: #222634;
+  --button-border: #2c3140;
+  --button-active: #2b3040;
+  --field: #0c0e12;
+  --sheet: rgba(15, 17, 21, 0.94);
+  --halt: #c0392b;
+  --amber: #b7791f;
+  --running: #2ecc71;
+  --paused: #f1c40f;
+  --source: #9fb4ff;
+  --error: #ff6b6b;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --border: #d9dde3;
+    --text: #171a20;
+    --muted: #5b6372;
+    --button: #eceef3;
+    --button-border: #d3d7df;
+    --button-active: #dfe2e9;
+    --field: #ffffff;
+    --sheet: rgba(250, 251, 252, 0.95);
+    --running: #17884a;
+    --paused: #a8740a;
+    --source: #2f4fb5;
+    --error: #c0261b;
+  }
 }
 
 * { box-sizing: border-box; }
@@ -34,28 +65,90 @@ body {
   height: 100dvh;
 }
 
-header {
+.screen {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- Status line: state and reason, the run's name, the pill and the menu --- */
+.status-line {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
-  padding-top: max(10px, env(safe-area-inset-top));
+  padding: 6px 8px 6px 14px;
+  padding-top: max(6px, env(safe-area-inset-top));
   padding-left: max(14px, env(safe-area-inset-left));
-  padding-right: max(14px, env(safe-area-inset-right));
+  padding-right: max(8px, env(safe-area-inset-right));
   background: var(--panel);
   border-bottom: 1px solid var(--border);
+  /* A sideways swipe is this line's own; an up or down one stays the system's. */
+  touch-action: pan-y;
+  user-select: none;
 }
-header b { font-weight: 700; }
-header .conn { font-size: 13px; color: var(--muted); }
-header .conn.connected { color: #2ecc71; }
-header .conn.reconnecting, header .conn.connecting { color: #f1c40f; }
-header .run { margin-left: auto; font-size: 13px; color: var(--muted); }
-header .run.running { color: #2ecc71; }
-header .run.paused { color: #f1c40f; }
-header .link {
-  background: none; border: none; color: var(--muted);
-  text-decoration: underline; cursor: pointer; font-size: 13px;
+.status-line .state { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.dot {
+  flex: none;
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--muted);
 }
+.dot.running { background: var(--running); }
+.dot.paused { background: var(--paused); }
+.dot.offline { background: transparent; border: 2px solid var(--muted); }
+.status-line .name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+.status-line .name > * { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.status-line .why { font-size: 12px; color: var(--muted); }
+.status-line .actions { display: flex; align-items: center; gap: 6px; }
+.status-line .actions button {
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 999px;
+  border: 1px solid var(--button-border);
+  background: var(--button);
+  color: var(--text);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.status-line .pill { padding: 0 12px; }
+.menu-away { position: fixed; inset: 0; z-index: 2; }
+.menu {
+  position: absolute;
+  z-index: 3;
+  top: 100%;
+  right: max(8px, env(safe-area-inset-right));
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.menu button {
+  min-height: 44px;
+  padding: 0 14px;
+  text-align: left;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.menu button.on { background: var(--button); }
 
 .stage {
   flex: 1;
@@ -76,42 +169,43 @@ header .link {
  */
 .stage-canvas.interactive {
   cursor: crosshair;
-  box-shadow: inset 0 0 0 2px var(--accent);
+  box-shadow: inset 0 0 0 2px var(--halt);
 }
 
-/* Floating tool strip revealed by tapping the stage — kept off-screen until asked for so it never covers
-   the video while you're just watching. */
-.stage-tools {
+/* Up for as long as Touch is on, with nothing to dismiss it. It takes no touch itself. */
+.touch-badge {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-}
-.stage-tools .interact,
-.stage-tools .overlays,
-.stage-tools .keys,
-.stage-tools .zoom-reset {
-  padding: 8px 14px;
-  font-size: 13px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: rgba(15, 17, 21, 0.78);
-  color: var(--text);
-  cursor: pointer;
-}
-.stage-tools .interact.on {
-  background: var(--accent);
-  border-color: var(--accent);
+  max-width: calc(100% - 16px);
+  padding: 5px 12px;
+  border-radius: 14px;
+  background: var(--halt);
   color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
 }
-.stage-tools .interact:disabled { opacity: 0.4; cursor: default; }
-.stage-tools .keys.on { border-color: var(--accent); }
-.stage-tools { flex-wrap: wrap; justify-content: flex-end; left: 10px; }
-/* The strip spans the stage's width; only what is in it takes a touch. */
-.stage-tools { pointer-events: none; }
-.stage-tools > * { pointer-events: auto; }
+.touch-badge small { font-weight: 400; }
+
+/* Where the shown run stands among its bot's runs. */
+.run-dots {
+  position: absolute;
+  bottom: 6px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.run-dots span { width: 7px; height: 7px; border-radius: 50%; background: rgba(255, 255, 255, 0.35); }
+.run-dots span.here { background: #fff; }
 
 /* Why the host has no picture, in place of one. */
 .no-picture {
@@ -136,7 +230,7 @@ header .link {
   flex-direction: column;
   gap: 6px;
   padding: 8px;
-  background: rgba(15, 17, 21, 0.9);
+  background: var(--sheet);
   border-top: 1px solid var(--border);
 }
 .keyboard-row {
@@ -175,21 +269,11 @@ header .link {
   padding: 8px 12px;
   border-radius: 8px;
   font-size: 13px;
-  background: rgba(15, 17, 21, 0.9);
+  background: var(--sheet);
   border: 1px solid var(--accent);
   color: var(--text);
   pointer-events: none;
 }
-/* On is the default and the quiet state; off is the one worth showing, so it's the dimmed one. */
-.stage-tools .overlays:not(.on) { opacity: 0.55; }
-.stage-tools .interact-warn {
-  padding: 6px 10px;
-  border-radius: 8px;
-  font-size: 12px;
-  background: rgba(15, 17, 21, 0.78);
-  color: var(--muted);
-}
-
 .controls {
   display: flex;
   gap: 8px;
@@ -212,7 +296,7 @@ header .link {
   gap: 14px;
   padding: 20px;
   text-align: center;
-  background: rgba(15, 17, 21, 0.82);
+  background: var(--sheet);
 }
 .reconnect-overlay p { margin: 0; color: var(--text); }
 .reconnect-overlay .reach-steps {
@@ -238,19 +322,120 @@ header .link {
 }
 .controls button {
   flex: 1;
-  padding: 14px 8px;
+  min-height: 48px;
+  padding: 10px 8px;
   font-size: 15px;
   border-radius: 10px;
-  border: 1px solid #2c3140;
-  background: #222634;
+  border: 1px solid var(--button-border);
+  background: var(--button);
   color: var(--text);
   cursor: pointer;
 }
-.controls button:active { background: #2b3040; }
+.controls button:active { background: var(--button-active); }
 .controls button:disabled { opacity: 0.4; cursor: default; }
-.controls button.go { background: var(--accent); border-color: var(--accent); }
-.controls button.log { margin-left: auto; }
-.controls button.log.on { border-color: var(--accent); }
+.controls button.go { background: var(--accent); border-color: var(--accent); color: #fff; }
+.controls button.halt { background: var(--halt); border-color: var(--halt); color: #fff; }
+.controls button.touch-toggle.on { background: var(--amber); border-color: var(--amber); color: #fff; }
+
+/* --- Landscape: the picture keeps the full height, the controls are a rail on its right --- */
+@media (orientation: landscape) {
+  .screen {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) calc(62px + env(safe-area-inset-right));
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+  /* The line's parts take their own places in the rail; its name and swipe stay in portrait. */
+  .status-line { display: contents; }
+  .status-line .name, .status-line .pill-word { display: none; }
+  .status-line .state, .status-line .actions, .controls {
+    grid-column: 2;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 4px;
+    padding-right: max(4px, env(safe-area-inset-right));
+    background: var(--panel);
+  }
+  .status-line .state { grid-row: 1; display: flex; font-size: 11px; }
+  .controls { grid-row: 2; justify-content: center; border-top: none; overflow-y: auto; }
+  .status-line .actions { grid-row: 3; display: flex; flex-direction: column-reverse; }
+  .stage { grid-column: 1; grid-row: 1 / -1; }
+  .controls button {
+    flex: none;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 6px 0;
+    font-size: 11px;
+  }
+  .controls .icon { font-size: 17px; }
+  .menu { position: fixed; top: auto; bottom: 8px; right: calc(66px + env(safe-area-inset-right)); max-height: calc(100dvh - 16px); overflow-y: auto; }
+}
+
+/* --- Overview: every run, grouped by bot --- */
+.overview {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  overflow-y: auto;
+  padding: 0 12px 16px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  padding-left: max(12px, env(safe-area-inset-left));
+  padding-right: max(12px, env(safe-area-inset-right));
+  background: var(--bg);
+}
+.overview-bar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: max(6px, env(safe-area-inset-top));
+  padding-bottom: 6px;
+  background: var(--bg);
+}
+.overview-close {
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 18px;
+  cursor: pointer;
+}
+.overview h2 { margin: 12px 0 8px; font-size: 15px; }
+.overview h2 span { margin-left: 8px; font-size: 12px; font-weight: 400; color: var(--muted); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px;
+  border-radius: 10px;
+  border: 2px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.tile.selected { border-color: var(--accent); }
+.tile .picture {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #000;
+}
+.tile .picture img, .tile .picture canvas { width: 100%; height: 100%; object-fit: contain; }
+.tile .picture canvas[hidden] { display: none; }
+.tile .label { display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; }
 
 /* --- Log drawer: the run's trace, a sheet over the lower half of the stage --- */
 .log-drawer {
@@ -261,7 +446,7 @@ header .link {
   height: 55%;
   display: flex;
   flex-direction: column;
-  background: rgba(15, 17, 21, 0.94);
+  background: var(--sheet);
   border-top: 1px solid var(--border);
 }
 .log-bar {
@@ -300,12 +485,12 @@ header .link {
 }
 .log-line { display: flex; gap: 6px; flex-wrap: wrap; }
 .log-time { color: var(--muted); }
-.log-source { color: #9fb4ff; }
+.log-source { color: var(--source); }
 .log-text { white-space: pre-wrap; word-break: break-word; }
 .log-count { color: var(--muted); }
 .log-line.debug .log-text { color: var(--muted); }
-.log-line.warn .log-text { color: #f1c40f; }
-.log-line.error .log-text { color: #ff6b6b; }
+.log-line.warn .log-text { color: var(--paused); }
+.log-line.error .log-text { color: var(--error); }
 .log-empty { color: var(--muted); text-align: center; margin-top: 24px; }
 
 /* --- Update banner --- */
@@ -364,7 +549,7 @@ header .link {
   cursor: pointer;
   text-align: left;
 }
-.recent-connect:active { background: #1b1f2a; }
+.recent-connect:active { background: var(--button-active); }
 .recent-label { font-size: 15px; font-weight: 600; word-break: break-all; }
 .recent-meta { font-size: 12px; color: var(--muted); }
 .recent-x {
@@ -399,7 +584,7 @@ header .link {
 }
 .about .check-update:disabled { opacity: 0.5; cursor: default; }
 .about-note { color: var(--muted); }
-.about-note.update { color: #2ecc71; font-weight: 600; text-decoration: underline; }
+.about-note.update { color: var(--running); font-weight: 600; text-decoration: underline; }
 /* Inside the APK the update action is a button (UpdateLink installs in place); it reads as the link it was. */
 button.update-get, button.about-note.update {
   background: none;
@@ -409,7 +594,7 @@ button.update-get, button.about-note.update {
   cursor: pointer;
 }
 .update-error { flex-basis: 100%; font-size: 12px; }
-.about .update-error { color: #ff6b6b; }
+.about .update-error { color: var(--error); }
 .connect h1 { margin: 0; }
 .connect .muted { color: var(--muted); margin: 0 0 12px; }
 .connect label { font-size: 13px; color: var(--muted); margin-top: 8px; }
@@ -422,7 +607,7 @@ button.update-get, button.about-note.update {
   font-size: 15px;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: #0c0e12;
+  background: var(--field);
   color: var(--text);
 }
 .connect .row { display: flex; gap: 10px; }
